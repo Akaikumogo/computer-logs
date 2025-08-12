@@ -6,7 +6,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Computer } from '../schemas/computer.schema';
 import { Log } from '../schemas/log.schema';
-
+import type { SortOrder } from 'mongoose';
 import { AddLogDto } from '../dto/add-logs.dto';
 import { GetLogsQueryDto } from '../dto/get-logs-query.dto';
 import { Application } from '../schemas/application.scehma';
@@ -66,7 +66,8 @@ export class ComputersService {
 
     const sortField = query.sortBy ?? 'time';
     const sortOrder = query.order === 'asc' ? 1 : -1;
-    const sort = { [sortField]: sortOrder };
+
+    const sort: Record<string, SortOrder> = { [sortField]: sortOrder };
 
     const [logs, total] = await Promise.all([
       this.logModel
