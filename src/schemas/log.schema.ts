@@ -17,3 +17,9 @@ export class Log extends Document {
 }
 
 export const LogSchema = SchemaFactory.createForClass(Log);
+
+/* Indexlar – filter tezligi uchun */
+LogSchema.index({ device: 1 });
+LogSchema.index({ application: 1 });
+LogSchema.index({ action: 1 });
+LogSchema.index({ time: -1 }); // date range query uchun
