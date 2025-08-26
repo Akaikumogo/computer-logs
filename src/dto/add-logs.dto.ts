@@ -35,6 +35,8 @@ export class AddLogDto {
   @ApiPropertyOptional({
     description: 'File path related to the log',
     nullable: true,
+    default: null,
+    example: null,
   })
   @IsOptional()
   @Transform(({ value }) =>
@@ -43,7 +45,12 @@ export class AddLogDto {
   @IsString()
   path?: string | null;
 
-  @ApiPropertyOptional({ description: 'Related URL', nullable: true })
+  @ApiPropertyOptional({
+    description: 'Related URL',
+    nullable: true,
+    default: null,
+    example: null,
+  })
   @IsOptional()
   @Transform(({ value }) =>
     value === null || value === '' ? undefined : value,
