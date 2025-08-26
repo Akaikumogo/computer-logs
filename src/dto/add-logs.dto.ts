@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-import { ApiProperty } from '@nestjs/swagger';
-import { IsISO8601, IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsISO8601,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+} from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class AddLogDto {
   @ApiProperty({ example: 'open', description: 'Action type' })
@@ -24,4 +31,23 @@ export class AddLogDto {
   })
   @IsISO8601()
   time: string;
+
+  @ApiPropertyOptional({
+    description: 'File path related to the log',
+    nullable: true,
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === null || value === '' ? undefined : value,
+  )
+  @IsString()
+  path?: string | null;
+
+  @ApiPropertyOptional({ description: 'Related URL', nullable: true })
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === null || value === '' ? undefined : value,
+  )
+  @IsUrl({ require_protocol: true }, { message: 'Link must be a valid URL' })
+  link?: string | null;
 }

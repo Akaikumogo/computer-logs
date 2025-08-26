@@ -14,6 +14,12 @@ export class Log extends Document {
 
   @Prop({ required: true })
   time: Date;
+
+  @Prop({ required: false, default: null, type: String })
+  path?: string | null;
+
+  @Prop({ required: false, default: null, type: String })
+  link?: string | null;
 }
 
 export const LogSchema = SchemaFactory.createForClass(Log);

@@ -41,6 +41,8 @@ export class ComputersService {
       action: dto.action,
       application: dto.application,
       time: new Date(dto.time),
+      path: dto.path ?? null,
+      link: dto.link ?? null,
     });
   }
 
