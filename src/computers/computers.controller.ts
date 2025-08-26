@@ -1,8 +1,23 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Patch,
+} from '@nestjs/common';
 import { ComputersService } from './computers.service';
 import { AddLogDto } from '../dto/add-logs.dto';
 import { GetLogsQueryDto } from '../dto/get-logs-query.dto';
-import { ApiTags, ApiQuery, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiQuery,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+} from '@nestjs/swagger';
+import { AssignEmployeeDto } from './dto/assign-employee.dto';
 
 @ApiTags('Computers')
 @Controller()
@@ -24,6 +39,22 @@ export class ComputersController {
   @ApiOperation({ summary: 'Barcha computer (device) ro‘yxati' })
   getComputers() {
     return this.computersService.getComputers();
+  }
+
+  @Patch('computers/:device/employee')
+  @ApiOperation({ summary: 'Kompyuterga xodimni biriktirish yoki ajratish' })
+  @ApiBody({ type: AssignEmployeeDto })
+  @ApiResponse({ status: 200, description: 'Biriktirildi yoki ajratildi' })
+  @ApiResponse({ status: 404, description: 'Device yoki Employee topilmadi' })
+  assignEmployee(
+    @Param('device') device: string,
+    @Body() body: AssignEmployeeDto,
+  ) {
+    return this.computersService.assignEmployee(
+      device,
+      body.employeeId ?? null,
+      body.deviceRealName ?? null,
+    );
   }
 
   /* -------------------- LOG LAR -------------------- */

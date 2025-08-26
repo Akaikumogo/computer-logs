@@ -21,6 +21,9 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
+import { PatchFingerprintDto } from './dto/patch-fingerprint.dto';
+import { GetFingerprintsQueryDto } from './dto/get-fingerprints-query.dto';
+import { GetAllFingerprintsQueryDto } from './dto/get-all-fingerprints-query.dto';
 
 @ApiTags('HR')
 @Controller('hr')
@@ -51,6 +54,26 @@ export class HrController {
     return this.hrService.getEmployees(filter, search);
   }
 
+  // ---------- Fingerprints (global list) BEFORE dynamic :id to avoid conflicts ----------
+  @Get('fingerprints')
+  @ApiOperation({
+    summary: 'Barcha barmoq izlari (pagination, optional filterlar)',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'includeTemplate', required: false, type: Boolean })
+  @ApiQuery({ name: 'status', required: false, enum: ['active', 'revoked'] })
+  @ApiQuery({ name: 'employeeId', required: false, type: String })
+  listAllFingerprints(@Query() query: GetAllFingerprintsQueryDto) {
+    return this.hrService.listAllFingerprints(
+      query.page ?? 1,
+      query.limit ?? 20,
+      query.includeTemplate ?? false,
+      query.status,
+      query.employeeId,
+    );
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get employee by ID' })
   @ApiResponse({ status: 200, description: 'Employee found', type: Employee })
@@ -79,5 +102,34 @@ export class HrController {
   @ApiResponse({ status: 404, description: 'Employee not found' })
   softDelete(@Param('id') id: string) {
     return this.hrService.deleteEmployee(id);
+  }
+
+  @Patch(':id/fingerprints')
+  @ApiOperation({ summary: 'Xodimga barmoq izi (AS608) qo‘shish' })
+  @ApiBody({ type: PatchFingerprintDto })
+  @ApiResponse({ status: 200, description: 'Fingerprint added' })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  @ApiResponse({ status: 409, description: 'Fingerprint limit (10) exceeded' })
+  addFingerprint(@Param('id') id: string, @Body() body: PatchFingerprintDto) {
+    return this.hrService.addFingerprint(id, body.template);
+  }
+
+  @Get(':id/fingerprints')
+  @ApiOperation({ summary: 'Xodimning barmoq izlari ro‘yxati (pagination)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'includeTemplate', required: false, type: Boolean })
+  @ApiQuery({ name: 'status', required: false, enum: ['active', 'revoked'] })
+  listFingerprints(
+    @Param('id') id: string,
+    @Query() query: GetFingerprintsQueryDto,
+  ) {
+    return this.hrService.listFingerprints(
+      id,
+      query.page ?? 1,
+      query.limit ?? 20,
+      query.includeTemplate ?? false,
+      query.status,
+    );
   }
 }

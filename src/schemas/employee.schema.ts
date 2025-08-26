@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class Employee extends Document {
@@ -45,6 +45,14 @@ export class Employee extends Document {
 
   @Prop()
   deletedAt?: Date;
+
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Workplace',
+    required: false,
+    index: true,
+  })
+  primaryWorkplaceId?: MongooseSchema.Types.ObjectId | null;
 }
 
 export const EmployeeSchema = SchemaFactory.createForClass(Employee);

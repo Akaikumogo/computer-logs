@@ -5,6 +5,7 @@ import { ComputersController } from './computers.controller';
 import { Computer, ComputerSchema } from '../schemas/computer.schema';
 import { Log, LogSchema } from '../schemas/log.schema';
 import { Application, ApplicationSchema } from '../schemas/application.scehma';
+import { Employee, EmployeeSchema } from '../schemas/employee.schema';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { Application, ApplicationSchema } from '../schemas/application.scehma';
       { name: Computer.name, schema: ComputerSchema },
       { name: Log.name, schema: LogSchema },
       { name: Application.name, schema: ApplicationSchema },
+      { name: Employee.name, schema: EmployeeSchema },
     ]),
   ],
   controllers: [ComputersController],

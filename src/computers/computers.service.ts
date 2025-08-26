@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Computer } from '../schemas/computer.schema';
@@ -10,6 +10,7 @@ import type { SortOrder } from 'mongoose';
 import { AddLogDto } from '../dto/add-logs.dto';
 import { GetLogsQueryDto } from '../dto/get-logs-query.dto';
 import { Application } from '../schemas/application.scehma';
+import { Employee } from '../schemas/employee.schema';
 
 @Injectable()
 export class ComputersService {
@@ -18,6 +19,7 @@ export class ComputersService {
     @InjectModel(Log.name) private readonly logModel: Model<Log>,
     @InjectModel(Application.name)
     private readonly applicationModel: Model<Application>,
+    @InjectModel(Employee.name) private readonly employeeModel: Model<Employee>,
   ) {}
 
   /** LOG QO‘SHISH */
@@ -45,6 +47,27 @@ export class ComputersService {
   /** BARCHA COMPUTER LAR RO‘YXATINI QAYTARISH */
   async getComputers() {
     return this.computerModel.find().sort({ createdAt: -1 }).lean().exec();
+  }
+
+  /** KOMPYUTERGA XODIMNI BIRIKTIRISH/AJRATISH */
+  async assignEmployee(
+    device: string,
+    employeeId: string | null,
+    deviceRealName: string | null,
+  ) {
+    const computer = await this.computerModel.findOne({ name: device }).exec();
+    if (!computer) throw new NotFoundException('Device topilmadi');
+
+    if (employeeId) {
+      const employee = await this.employeeModel.findById(employeeId).exec();
+      if (!employee) throw new NotFoundException('Employee topilmadi');
+      computer.assignedEmployeeId = (employee as any)._id;
+    } else {
+      computer.assignedEmployeeId = null;
+    }
+    computer.deviceRealName = deviceRealName;
+    await computer.save();
+    return computer.toObject();
   }
 
   /** LOG LARNI FILTER, PAGINATION, SORT bilan QAYTARISH */
