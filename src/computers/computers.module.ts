@@ -6,6 +6,7 @@ import { Computer, ComputerSchema } from '../schemas/computer.schema';
 import { Log, LogSchema } from '../schemas/log.schema';
 import { Application, ApplicationSchema } from '../schemas/application.scehma';
 import { Employee, EmployeeSchema } from '../schemas/employee.schema';
+import { AiService } from './ai.service';
 
 @Module({
   imports: [
@@ -17,6 +18,6 @@ import { Employee, EmployeeSchema } from '../schemas/employee.schema';
     ]),
   ],
   controllers: [ComputersController],
-  providers: [ComputersService],
+  providers: [ComputersService, AiService],
 })
 export class ComputersModule {}

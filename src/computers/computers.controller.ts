@@ -53,7 +53,6 @@ export class ComputersController {
     return this.computersService.assignEmployee(
       device,
       body.employeeId ?? null,
-      body.deviceRealName ?? null,
     );
   }
 
@@ -75,7 +74,10 @@ export class ComputersController {
   getLogs(@Param('device') device: string, @Query() query: GetLogsQueryDto) {
     return this.computersService.getLogs(device, query);
   }
-
+  @Post('enrich-all')
+  async enrichAll() {
+    return this.computersService.enrichAllApplications();
+  }
   /* -------------------- ILOVALAR -------------------- (optional) */
   @Get('applications')
   @ApiOperation({

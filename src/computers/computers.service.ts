@@ -11,6 +11,7 @@ import { AddLogDto } from '../dto/add-logs.dto';
 import { GetLogsQueryDto } from '../dto/get-logs-query.dto';
 import { Application } from '../schemas/application.scehma';
 import { Employee } from '../schemas/employee.schema';
+import { AiService } from './ai.service';
 
 @Injectable()
 export class ComputersService {
@@ -20,9 +21,10 @@ export class ComputersService {
     @InjectModel(Application.name)
     private readonly applicationModel: Model<Application>,
     @InjectModel(Employee.name) private readonly employeeModel: Model<Employee>,
+    private readonly aiService: AiService,
   ) {}
 
-  /** LOG QO‘SHISH */
+  /** LOG QO'SHISH */
   async addLog(dto: AddLogDto) {
     const compExists = await this.computerModel.findOne({ name: dto.device });
     if (!compExists) {
@@ -33,7 +35,17 @@ export class ComputersService {
       name: dto.application,
     });
     if (!appExists) {
-      await this.applicationModel.create({ name: dto.application });
+      // Create application with basic info first
+      const newApp = await this.applicationModel.create({
+        name: dto.application,
+      });
+
+      // Enrich with AI in background (non-blocking)
+      this.enrichApplicationWithAI(newApp._id, dto.application).catch(
+        (error) => {
+          console.error('Failed to enrich application with AI:', error);
+        },
+      );
     }
 
     return this.logModel.create({
@@ -46,17 +58,57 @@ export class ComputersService {
     });
   }
 
-  /** BARCHA COMPUTER LAR RO‘YXATINI QAYTARISH */
+  /** AI bilan application ni boyitish (background) */
+  private async enrichApplicationWithAI(appId: any, appName: string) {
+    try {
+      const { tag, description } =
+        await this.aiService.enrichApplication(appName);
+
+      if (tag || description) {
+        await this.applicationModel.findByIdAndUpdate(appId, {
+          ...(tag && { tag }),
+          ...(description && { description }),
+        });
+      }
+    } catch (error) {
+      console.error('AI enrichment failed for application:', appName, error);
+    }
+  }
+  /** BARCHA APPLICATION LARNI AI BILAN BO'YITISH */
+  async enrichAllApplications() {
+    const applications = await this.applicationModel.find().lean().exec();
+
+    for (const app of applications) {
+      try {
+        if (!app.tag || !app.description) {
+          const enriched = await this.aiService.enrichApplication(app.name);
+
+          if (enriched.tag || enriched.description) {
+            await this.applicationModel.findByIdAndUpdate(app._id, {
+              $set: {
+                tag: enriched.tag,
+                description: enriched.description,
+              },
+            });
+
+            console.log(`✅ Updated ${app.name} with AI enrichment`);
+          } else {
+            console.warn(`⚠️ No enrichment returned for ${app.name}`);
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Failed to enrich ${app.name}`, error);
+      }
+    }
+  }
+
+  /** BARCHA COMPUTER LAR RO'YXATINI QAYTARISH */
   async getComputers() {
     return this.computerModel.find().sort({ createdAt: -1 }).lean().exec();
   }
 
   /** KOMPYUTERGA XODIMNI BIRIKTIRISH/AJRATISH */
-  async assignEmployee(
-    device: string,
-    employeeId: string | null,
-    deviceRealName: string | null,
-  ) {
+  async assignEmployee(device: string, employeeId: string | null) {
     const computer = await this.computerModel.findOne({ name: device }).exec();
     if (!computer) throw new NotFoundException('Device topilmadi');
 
@@ -67,7 +119,7 @@ export class ComputersService {
     } else {
       computer.assignedEmployeeId = null;
     }
-    computer.deviceRealName = deviceRealName;
+
     await computer.save();
     return computer.toObject();
   }
@@ -116,7 +168,7 @@ export class ComputersService {
     };
   }
 
-  /** OPTIONAL – ILOVALAR RO‘YXATI */
+  /** OPTIONAL – ILOVALAR RO'YXATI */
   async getApplications(page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const [apps, total] = await Promise.all([
