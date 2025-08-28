@@ -81,11 +81,13 @@ export class AiService {
     }
 
     try {
-      const prompt = `Generate a brief, professional description for this application in 1-2 sentences. 
+      const prompt = `Quyidagi dastur uchun qisqa, professional tavsif yozing, 1-2 gapda. 
       
-      Application name: "${appName}"
+      Dastur nomi: "${appName}"
       
-      Keep it concise and informative. Focus on what the application does:`;
+      Tavsif qisqa, tushunarli va informativ bo'lsin. Dastur nima ish qiladi, shunga e'tibor bering.
+      
+      Javobni faqat o'zbek tilida yozing:`;
 
       const result = await this.model.generateContent(prompt);
       const description = result.response.text().trim();
