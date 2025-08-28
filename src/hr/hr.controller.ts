@@ -9,31 +9,53 @@ import {
   Body,
   Query,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { HrService } from './hr.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Employee } from '../schemas/employee.schema';
+import { EmployeeResponseDto } from './dto/employee-response.dto';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiQuery,
   ApiBody,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { PatchFingerprintDto } from './dto/patch-fingerprint.dto';
 import { GetFingerprintsQueryDto } from './dto/get-fingerprints-query.dto';
 import { GetAllFingerprintsQueryDto } from './dto/get-all-fingerprints-query.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../auth/entities/user.entity';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('HR')
 @Controller('hr')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 export class HrController {
   constructor(private readonly hrService: HrService) {}
 
   @Post()
   @ApiBody({ type: CreateEmployeeDto })
-  @ApiOperation({ summary: 'Create new employee' })
-  @ApiResponse({ status: 201, description: 'Employee created', type: Employee })
+  @ApiOperation({
+    summary: 'Create new employee with automatic user account',
+    description:
+      'Creates an employee and automatically generates a user account with username and password',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Employee created with user account',
+    type: EmployeeResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Email or Passport ID already exists',
+  })
   create(@Body() dto: CreateEmployeeDto) {
     return this.hrService.createEmployee(dto);
   }
@@ -74,6 +96,40 @@ export class HrController {
     );
   }
 
+  @Get('employees/credentials')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: "Barcha xodimlarning login/parol ma'lumotlari",
+    description:
+      "Faqat SUPER ADMIN ko'ra oladi - barcha xodimlarning login va parollarini ko'rish",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Barcha xodimlarning credential ma'lumotlari",
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          employeeId: { type: 'string' },
+          fullName: { type: 'string' },
+          username: { type: 'string' },
+          email: { type: 'string' },
+          department: { type: 'string' },
+          position: { type: 'string' },
+          hasTempPassword: { type: 'boolean' },
+          tempPassword: { type: 'string' },
+          note: { type: 'string' },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: "Ruxsat yo'q - faqat SUPER ADMIN" })
+  getAllEmployeeCredentials() {
+    return this.hrService.getAllEmployeeCredentials();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get employee by ID' })
   @ApiResponse({ status: 200, description: 'Employee found', type: Employee })
@@ -90,6 +146,63 @@ export class HrController {
   @ApiResponse({ status: 404, description: 'Employee not found' })
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto) {
     return this.hrService.updateEmployee(id, dto);
+  }
+
+  @Get(':id/credentials')
+  @ApiOperation({
+    summary: 'Get employee credentials info',
+    description:
+      'Get information about employee user account and password status',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Employee credentials info retrieved',
+    schema: {
+      type: 'object',
+      properties: {
+        employeeId: { type: 'string' },
+        fullName: { type: 'string' },
+        username: { type: 'string' },
+        email: { type: 'string' },
+        hasTempPassword: { type: 'boolean' },
+        note: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Employee does not have a user account',
+  })
+  getCredentials(@Param('id') id: string) {
+    return this.hrService.getEmployeeCredentials(id);
+  }
+
+  @Patch(':id/reset-password')
+  @ApiOperation({
+    summary: 'Reset employee password',
+    description: 'Generates a new temporary password for the employee',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        username: { type: 'string' },
+        newPassword: { type: 'string' },
+        note: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Employee does not have a user account',
+  })
+  resetPassword(@Param('id') id: string) {
+    return this.hrService.resetEmployeePassword(id);
   }
 
   @Patch(':id/delete')

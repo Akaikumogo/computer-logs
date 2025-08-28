@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable quotes */
 import {
   Controller,
   Get,
@@ -6,9 +8,10 @@ import {
   Param,
   Query,
   Patch,
+  UseGuards,
 } from '@nestjs/common';
 import { ComputersService } from './computers.service';
-import { AddLogDto } from '../dto/add-logs.dto';
+
 import { GetLogsQueryDto } from '../dto/get-logs-query.dto';
 import {
   ApiTags,
@@ -16,24 +19,21 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBody,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AssignEmployeeDto } from './dto/assign-employee.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../auth/entities/user.entity';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Computers')
 @Controller()
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 export class ComputersController {
   constructor(private readonly computersService: ComputersService) {}
-
-  /* -------------------- LOG QO‘SHISH -------------------- */
-  @Post('add-log')
-  @ApiOperation({
-    summary: 'Log qo‘shish (device va application avtomatik yaratish)',
-  })
-  @ApiResponse({ status: 201, description: 'Log yaratildi' })
-  addLog(@Body() body: AddLogDto) {
-    return this.computersService.addLog(body);
-  }
-
   /* -------------------- COMPUTER LAR -------------------- */
   @Get('computers')
   @ApiOperation({ summary: 'Barcha computer (device) ro‘yxati' })
@@ -42,13 +42,20 @@ export class ComputersController {
   }
 
   @Patch('computers/:device/employee')
-  @ApiOperation({ summary: 'Kompyuterga xodimni biriktirish yoki ajratish' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Kompyuterga xodimni biriktirish yoki ajratish',
+    description: 'Faqat ADMIN va HR xodimlar xodimlarni biriktira oladi',
+  })
   @ApiBody({ type: AssignEmployeeDto })
   @ApiResponse({ status: 200, description: 'Biriktirildi yoki ajratildi' })
+  @ApiResponse({ status: 403, description: "Ruxsat yo'q - faqat ADMIN va HR" })
   @ApiResponse({ status: 404, description: 'Device yoki Employee topilmadi' })
   assignEmployee(
     @Param('device') device: string,
     @Body() body: AssignEmployeeDto,
+    @CurrentUser() user: any,
   ) {
     return this.computersService.assignEmployee(
       device,
@@ -75,7 +82,15 @@ export class ComputersController {
     return this.computersService.getLogs(device, query);
   }
   @Post('enrich-all')
-  async enrichAll() {
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Barcha ilovalarni enrich qilish',
+    description: 'Faqat ADMIN xodimlar bu funksiyani ishlata oladi',
+  })
+  @ApiResponse({ status: 200, description: 'Barcha ilovalar enrich qilindi' })
+  @ApiResponse({ status: 403, description: "Ruxsat yo'q - faqat ADMIN" })
+  async enrichAll(@CurrentUser() user: any) {
     return this.computersService.enrichAllApplications();
   }
   /* -------------------- ILOVALAR -------------------- (optional) */

@@ -53,6 +53,21 @@ export class Employee extends Document {
     index: true,
   })
   primaryWorkplaceId?: MongooseSchema.Types.ObjectId | null;
+
+  // 🔐 User account linking
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'User',
+    required: false,
+    index: true,
+  })
+  userId?: MongooseSchema.Types.ObjectId | null;
+
+  @Prop({ required: false })
+  username?: string;
+
+  @Prop({ required: false })
+  tempPassword?: string;
 }
 
 export const EmployeeSchema = SchemaFactory.createForClass(Employee);

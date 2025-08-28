@@ -4,6 +4,7 @@ import { HrService } from './hr.service';
 import { HrController } from './hr.controller';
 import { Employee, EmployeeSchema } from '../schemas/employee.schema';
 import { Fingerprint, FingerprintSchema } from '../schemas/fingerprint.schema';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { Fingerprint, FingerprintSchema } from '../schemas/fingerprint.schema';
       { name: Employee.name, schema: EmployeeSchema },
       { name: Fingerprint.name, schema: FingerprintSchema },
     ]),
+    AuthModule,
   ],
   controllers: [HrController],
   providers: [HrService],

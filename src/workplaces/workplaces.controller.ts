@@ -8,10 +8,23 @@ import {
   Param,
   Body,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiQuery,
+  ApiBody,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { WorkplacesService } from './workplaces.service';
 import { Types } from 'mongoose';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../auth/entities/user.entity';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 class CreateWorkplaceDto {
   name: string;
@@ -33,13 +46,22 @@ class UpdateWorkplaceDto {
 
 @ApiTags('Workplaces')
 @Controller('workplaces')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 export class WorkplacesController {
   constructor(private readonly workplacesService: WorkplacesService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create workplace' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Create workplace',
+    description: 'Faqat ADMIN va HR xodimlar workplace yarata oladi',
+  })
   @ApiBody({ type: CreateWorkplaceDto })
-  create(@Body() dto: CreateWorkplaceDto) {
+  @ApiResponse({ status: 201, description: 'Workplace yaratildi' })
+  @ApiResponse({ status: 403, description: "Ruxsat yo'q - faqat ADMIN va HR" })
+  create(@Body() dto: CreateWorkplaceDto, @CurrentUser() user: any) {
     const payload: any = { ...dto };
     if (dto.parentId) payload.parentId = new Types.ObjectId(dto.parentId);
     return this.workplacesService.create(payload);
@@ -75,9 +97,20 @@ export class WorkplacesController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update workplace by ID' })
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Update workplace by ID',
+    description: "Faqat ADMIN va HR xodimlar workplace o'zgartira oladi",
+  })
   @ApiBody({ type: UpdateWorkplaceDto })
-  update(@Param('id') id: string, @Body() dto: UpdateWorkplaceDto) {
+  @ApiResponse({ status: 200, description: 'Workplace yangilandi' })
+  @ApiResponse({ status: 403, description: "Ruxsat yo'q - faqat ADMIN va HR" })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkplaceDto,
+    @CurrentUser() user: any,
+  ) {
     const payload: any = { ...dto };
     if (dto.parentId) payload.parentId = new Types.ObjectId(dto.parentId);
     return this.workplacesService.update(id, payload);

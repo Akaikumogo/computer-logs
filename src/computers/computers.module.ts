@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ComputersService } from './computers.service';
 import { ComputersController } from './computers.controller';
+import { PublicComputersController } from './public-computers.controller';
 import { Computer, ComputerSchema } from '../schemas/computer.schema';
 import { Log, LogSchema } from '../schemas/log.schema';
 import { Application, ApplicationSchema } from '../schemas/application.scehma';
@@ -17,7 +18,7 @@ import { AiService } from './ai.service';
       { name: Employee.name, schema: EmployeeSchema },
     ]),
   ],
-  controllers: [ComputersController],
+  controllers: [ComputersController, PublicComputersController],
   providers: [ComputersService, AiService],
 })
 export class ComputersModule {}
