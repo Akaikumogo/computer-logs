@@ -81,18 +81,6 @@ export class ComputersController {
   getLogs(@Param('device') device: string, @Query() query: GetLogsQueryDto) {
     return this.computersService.getLogs(device, query);
   }
-  @Post('enrich-all')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({
-    summary: 'Barcha ilovalarni enrich qilish',
-    description: 'Faqat ADMIN xodimlar bu funksiyani ishlata oladi',
-  })
-  @ApiResponse({ status: 200, description: 'Barcha ilovalar enrich qilindi' })
-  @ApiResponse({ status: 403, description: "Ruxsat yo'q - faqat ADMIN" })
-  async enrichAll(@CurrentUser() user: any) {
-    return this.computersService.enrichAllApplications();
-  }
   /* -------------------- ILOVALAR -------------------- (optional) */
   @Get('applications')
   @ApiOperation({

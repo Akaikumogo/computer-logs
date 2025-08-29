@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -8,6 +8,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { User, UserSchema } from './entities/user.entity';
+import { SeedSuperAdminService } from './seed-super-admin';
 
 @Module({
   imports: [
@@ -23,7 +24,14 @@ import { User, UserSchema } from './entities/user.entity';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, LocalStrategy],
-  exports: [AuthService],
+  providers: [AuthService, JwtStrategy, LocalStrategy, SeedSuperAdminService],
+  exports: [AuthService, SeedSuperAdminService],
 })
-export class AuthModule {}
+export class AuthModule implements OnModuleInit {
+  constructor(private readonly seedSuperAdminService: SeedSuperAdminService) {}
+
+  async onModuleInit() {
+    // Create super admin account when module initializes
+    await this.seedSuperAdminService.seedSuperAdmin();
+  }
+}
