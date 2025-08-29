@@ -6,15 +6,24 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { Employee } from '../schemas/employee.schema';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Fingerprint } from '../schemas/fingerprint.schema';
 import { AuthService } from '../auth/auth.service';
 import { UserRole } from '../auth/entities/user.entity';
+import { GetEmployeesQueryDto } from './dto/get-employees-query.dto';
+import {
+  BulkUpdateEmployeesDto,
+  BulkDeleteEmployeesDto,
+  BulkRestoreEmployeesDto,
+  BulkPasswordResetDto,
+} from './dto/bulk-employee-operations.dto';
+import { HrStatisticsDto } from './dto/hr-statistics.dto';
 
 @Injectable()
 export class HrService {
@@ -97,65 +106,197 @@ export class HrService {
     }
   }
 
-  async getEmployees(
-    filter?: Partial<Pick<Employee, 'status' | 'department' | 'position'>>,
-    search?: string,
-  ) {
-    const query: FilterQuery<Employee> = { isDeleted: false };
+  async getEmployees(query: GetEmployeesQueryDto) {
+    const {
+      search,
+      status,
+      department,
+      position,
+      hireDateFrom,
+      hireDateTo,
+      birthDateFrom,
+      birthDateTo,
+      salaryFrom,
+      salaryTo,
+      hasUserAccount,
+      hasWorkplace,
+      page = 1,
+      limit = 20,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      includeDeleted = false,
+    } = query;
 
-    if (filter?.status) query.status = filter.status;
-    if (filter?.department) query.department = filter.department;
+    // Build filter object
+    const filter: FilterQuery<Employee> = {};
 
+    // Soft delete filter
+    if (!includeDeleted) {
+      filter.isDeleted = false;
+    }
+
+    // Status filter
+    if (status) {
+      filter.status = status;
+    }
+
+    // Department filter
+    if (department) {
+      filter.department = { $regex: department, $options: 'i' };
+    }
+
+    // Position filter
+    if (position) {
+      filter.position = { $regex: position, $options: 'i' };
+    }
+
+    // Date range filters
+    if (hireDateFrom || hireDateTo) {
+      filter.hireDate = {};
+      if (hireDateFrom) filter.hireDate.$gte = new Date(hireDateFrom);
+      if (hireDateTo) filter.hireDate.$lte = new Date(hireDateTo);
+    }
+
+    if (birthDateFrom || birthDateTo) {
+      filter.birthDate = {};
+      if (birthDateFrom) filter.birthDate.$gte = new Date(birthDateFrom);
+      if (birthDateTo) filter.birthDate.$lte = new Date(birthDateTo);
+    }
+
+    // Salary range filter
+    if (salaryFrom || salaryTo) {
+      filter.salary = {};
+      if (salaryFrom) filter.salary.$gte = salaryFrom;
+      if (salaryTo) filter.salary.$lte = salaryTo;
+    }
+
+    // User account filter
+    if (hasUserAccount !== undefined) {
+      if (hasUserAccount) {
+        filter.userId = { $exists: true, $ne: null };
+      } else {
+        filter.$or = [{ userId: { $exists: false } }, { userId: null }];
+      }
+    }
+
+    // Workplace filter
+    if (hasWorkplace !== undefined) {
+      if (hasWorkplace) {
+        filter.primaryWorkplaceId = { $exists: true, $ne: null };
+      } else {
+        filter.$or = [
+          { primaryWorkplaceId: { $exists: false } },
+          { primaryWorkplaceId: null },
+        ];
+      }
+    }
+
+    // Search filter (full name, position, department, email)
     if (search) {
-      const regex = new RegExp(search, 'i');
-      query.$or = [
-        { fullName: regex },
-        { position: regex },
-        { department: regex },
-        { email: regex },
-        { address: regex },
-        { phones: { $in: [regex] } },
+      filter.$or = [
+        { fullName: { $regex: search, $options: 'i' } },
+        { position: { $regex: search, $options: 'i' } },
+        { department: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
       ];
     }
 
-    return this.employeeModel.find(query).exec();
+    // Calculate pagination
+    const skip = (page - 1) * limit;
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    // Execute queries
+    const [employees, total] = await Promise.all([
+      this.employeeModel
+        .find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
+      this.employeeModel.countDocuments(filter).exec(),
+    ]);
+
+    const pages = Math.ceil(total / limit);
+    const hasNext = page < pages;
+    const hasPrev = page > 1;
+
+    // Build filters summary
+    const filters = {
+      ...(status && { status }),
+      ...(department && { department }),
+      ...(position && { position }),
+      ...(search && { search }),
+      ...(hireDateFrom && { hireDateFrom }),
+      ...(hireDateTo && { hireDateTo }),
+      ...(birthDateFrom && { birthDateFrom }),
+      ...(birthDateTo && { birthDateTo }),
+      ...(salaryFrom && { salaryFrom }),
+      ...(salaryTo && { salaryTo }),
+      ...(hasUserAccount !== undefined && { hasUserAccount }),
+      ...(hasWorkplace !== undefined && { hasWorkplace }),
+    };
+
+    return {
+      data: employees,
+      meta: {
+        total,
+        page,
+        limit,
+        pages,
+        count: employees.length,
+        hasNext,
+        hasPrev,
+      },
+      filters,
+    };
   }
 
   async getEmployeeById(id: string) {
     const employee = await this.employeeModel
       .findOne({ _id: id, isDeleted: false })
+      .lean()
       .exec();
-    if (!employee) throw new NotFoundException('Employee not found');
+    if (!employee) throw new NotFoundException('Employee topilmadi');
     return employee;
   }
 
   async updateEmployee(id: string, dto: UpdateEmployeeDto) {
-    const updated = await this.employeeModel
-      .findOneAndUpdate({ _id: id, isDeleted: false }, dto, { new: true })
+    const employee = await this.employeeModel
+      .findOne({ _id: id, isDeleted: false })
       .exec();
-    if (!updated) throw new NotFoundException('Employee not found');
-    return updated;
+    if (!employee) throw new NotFoundException('Employee topilmadi');
+
+    // Update only provided fields
+    Object.assign(employee, dto);
+    await employee.save();
+
+    return employee.toObject();
   }
 
   async deleteEmployee(id: string) {
     const employee = await this.employeeModel
       .findOne({ _id: id, isDeleted: false })
       .exec();
-    if (!employee) throw new NotFoundException('Employee not found');
+    if (!employee) throw new NotFoundException('Employee topilmadi');
 
     employee.isDeleted = true;
     employee.deletedAt = new Date();
-    employee.status = 'inactive';
-    return employee.save();
+    await employee.save();
+
+    return employee.toObject();
   }
 
   async getEmployeeCredentials(employeeId: string) {
     const employee = await this.employeeModel
       .findOne({ _id: employeeId, isDeleted: false })
+      .lean()
       .exec();
-    if (!employee) throw new NotFoundException('Employee not found');
+    if (!employee) throw new NotFoundException('Employee topilmadi');
 
-    if (!employee.userId || !employee.username) {
+    if (!employee.userId) {
       throw new ConflictException('Employee does not have a user account');
     }
 
@@ -166,28 +307,30 @@ export class HrService {
       email: employee.email,
       hasTempPassword: !!employee.tempPassword,
       note: employee.tempPassword
-        ? 'Employee has temporary password that should be changed on login'
-        : 'Employee has changed their password',
+        ? 'Employee has temporary password'
+        : 'Employee has changed password',
     };
   }
 
   async getAllEmployeeCredentials() {
     const employees = await this.employeeModel
-      .find({ isDeleted: false })
+      .find({ isDeleted: false, userId: { $exists: true, $ne: null } })
+      .select('fullName username email department position tempPassword')
+      .lean()
       .exec();
 
-    return employees.map((employee) => ({
-      employeeId: employee._id,
-      fullName: employee.fullName,
-      username: employee.username || 'Username yaratilmagan',
-      email: employee.email,
-      department: employee.department,
-      position: employee.position,
-      hasTempPassword: !!employee.tempPassword,
-      tempPassword: employee.tempPassword || "Parol o'zgartirilgan",
-      note: employee.tempPassword
-        ? 'Temporary password - should be changed on login'
-        : 'Password already changed by user',
+    return employees.map((emp) => ({
+      employeeId: emp._id,
+      fullName: emp.fullName,
+      username: emp.username,
+      email: emp.email,
+      department: emp.department,
+      position: emp.position,
+      hasTempPassword: !!emp.tempPassword,
+      tempPassword: emp.tempPassword || null,
+      note: emp.tempPassword
+        ? 'Temporary password - change required'
+        : 'Password changed by user',
     }));
   }
 
@@ -195,20 +338,13 @@ export class HrService {
     const employee = await this.employeeModel
       .findOne({ _id: employeeId, isDeleted: false })
       .exec();
-    if (!employee) throw new NotFoundException('Employee not found');
+    if (!employee) throw new NotFoundException('Employee topilmadi');
 
     if (!employee.userId) {
       throw new ConflictException('Employee does not have a user account');
     }
 
-    // Generate new password
     const newPassword = this.generatePassword();
-
-    // Update user password in auth system
-    // Note: This would require adding a method to AuthService to update passwords
-    // For now, we'll just return the new password
-
-    // Update employee with new temporary password
     employee.tempPassword = newPassword;
     await employee.save();
 
@@ -216,7 +352,7 @@ export class HrService {
       message: 'Password reset successfully',
       username: employee.username,
       newPassword,
-      note: 'Please change password on next login',
+      note: 'Employee must change password on next login',
     };
   }
 
@@ -224,29 +360,25 @@ export class HrService {
     const employee = await this.employeeModel
       .findOne({ _id: employeeId, isDeleted: false })
       .exec();
-    if (!employee) throw new NotFoundException('Employee not found');
+    if (!employee) throw new NotFoundException('Employee topilmadi');
 
-    const count = await this.fingerprintModel
-      .countDocuments({ employeeId })
+    // Check fingerprint limit (max 10 per employee)
+    const existingFingerprints = await this.fingerprintModel
+      .countDocuments({ employeeId, status: 'active' })
       .exec();
-    if (count >= 10) {
+
+    if (existingFingerprints >= 10) {
       throw new ConflictException('Fingerprint limit (10) exceeded');
     }
 
-    const templateBuffer = Buffer.from(templateBase64, 'base64');
-
-    const fp = await this.fingerprintModel.create({
-      employeeId: employee._id,
-      template: templateBuffer,
-      templateFormat: 'AS608',
+    const fingerprint = new this.fingerprintModel({
+      employeeId,
+      template: templateBase64,
       status: 'active',
     });
 
-    return {
-      id: fp._id,
-      employeeId: fp.employeeId,
-      status: fp.status,
-    };
+    await fingerprint.save();
+    return fingerprint.toObject();
   }
 
   async listFingerprints(
@@ -256,36 +388,34 @@ export class HrService {
     includeTemplate = false,
     status?: 'active' | 'revoked',
   ) {
-    await this.getEmployeeById(employeeId);
-
-    const filter: any = { employeeId };
+    const filter: FilterQuery<Fingerprint> = { employeeId };
     if (status) filter.status = status;
 
     const skip = (page - 1) * limit;
-
-    const [items, total] = await Promise.all([
+    const [fingerprints, total] = await Promise.all([
       this.fingerprintModel
         .find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
+        .select(includeTemplate ? {} : { template: 0 })
         .lean()
         .exec(),
       this.fingerprintModel.countDocuments(filter).exec(),
     ]);
 
-    const data = items.map((fp) => ({
-      id: fp._id,
-      status: fp.status,
-      createdAt: fp.createdAt,
-      ...(includeTemplate
-        ? { template: (fp.template as Buffer).toString('base64') }
-        : {}),
-    }));
-
+    const pages = Math.ceil(total / limit);
     return {
-      data,
-      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+      data: fingerprints,
+      meta: {
+        total,
+        page,
+        limit,
+        pages,
+        count: fingerprints.length,
+        hasNext: page < pages,
+        hasPrev: page > 1,
+      },
     };
   }
 
@@ -296,36 +426,304 @@ export class HrService {
     status?: 'active' | 'revoked',
     employeeId?: string,
   ) {
-    const filter: any = {};
+    const filter: FilterQuery<Fingerprint> = {};
     if (status) filter.status = status;
     if (employeeId) filter.employeeId = employeeId;
 
     const skip = (page - 1) * limit;
-
-    const [items, total] = await Promise.all([
+    const [fingerprints, total] = await Promise.all([
       this.fingerprintModel
         .find(filter)
+        .populate('employeeId', 'fullName department position')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
+        .select(includeTemplate ? {} : { template: 0 })
         .lean()
         .exec(),
       this.fingerprintModel.countDocuments(filter).exec(),
     ]);
 
-    const data = items.map((fp) => ({
-      id: fp._id,
-      employeeId: fp.employeeId,
-      status: fp.status,
-      createdAt: fp.createdAt,
-      ...(includeTemplate
-        ? { template: (fp.template as Buffer).toString('base64') }
-        : {}),
-    }));
+    const pages = Math.ceil(total / limit);
+    return {
+      data: fingerprints,
+      meta: {
+        total,
+        page,
+        limit,
+        pages,
+        count: fingerprints.length,
+        hasNext: page < pages,
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  // 🔹 BULK OPERATIONS
+  async bulkUpdateEmployees(dto: BulkUpdateEmployeesDto) {
+    const { employeeIds, ...updateData } = dto;
+
+    if (!updateData.status && !updateData.department && !updateData.position) {
+      throw new BadRequestException(
+        'At least one field must be provided for bulk update',
+      );
+    }
+
+    const result = await this.employeeModel.updateMany(
+      { _id: { $in: employeeIds }, isDeleted: false },
+      { $set: updateData },
+    );
 
     return {
-      data,
-      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+      message: `Successfully updated ${result.modifiedCount} employees`,
+      updatedCount: result.modifiedCount,
+      totalCount: employeeIds.length,
     };
+  }
+
+  async bulkDeleteEmployees(dto: BulkDeleteEmployeesDto) {
+    const { employeeIds, reason } = dto;
+
+    const result = await this.employeeModel.updateMany(
+      { _id: { $in: employeeIds }, isDeleted: false },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          ...(reason && { deleteReason: reason }),
+        },
+      },
+    );
+
+    return {
+      message: `Successfully deleted ${result.modifiedCount} employees`,
+      deletedCount: result.modifiedCount,
+      totalCount: employeeIds.length,
+      reason,
+    };
+  }
+
+  async bulkRestoreEmployees(dto: BulkRestoreEmployeesDto) {
+    const { employeeIds } = dto;
+
+    const result = await this.employeeModel.updateMany(
+      { _id: { $in: employeeIds }, isDeleted: true },
+      {
+        $set: {
+          isDeleted: false,
+          deleteReason: undefined,
+        },
+        $unset: { deletedAt: 1 },
+      },
+    );
+
+    return {
+      message: `Successfully restored ${result.modifiedCount} employees`,
+      restoredCount: result.modifiedCount,
+      totalCount: employeeIds.length,
+    };
+  }
+
+  async bulkPasswordReset(dto: BulkPasswordResetDto) {
+    const { employeeIds, note } = dto;
+
+    const employees = await this.employeeModel
+      .find({
+        _id: { $in: employeeIds },
+        isDeleted: false,
+        userId: { $exists: true, $ne: null },
+      })
+      .exec();
+
+    if (employees.length === 0) {
+      throw new BadRequestException(
+        'No valid employees found for password reset',
+      );
+    }
+
+    const resetResults: Array<{
+      employeeId: any;
+      fullName: string;
+      username: string | undefined;
+      newPassword: string;
+    }> = [];
+
+    for (const employee of employees) {
+      const newPassword = this.generatePassword();
+      employee.tempPassword = newPassword;
+      await employee.save();
+
+      resetResults.push({
+        employeeId: employee._id,
+        fullName: employee.fullName,
+        username: employee.username,
+        newPassword,
+      });
+    }
+
+    return {
+      message: `Successfully reset passwords for ${resetResults.length} employees`,
+      resetCount: resetResults.length,
+      totalCount: employeeIds.length,
+      results: resetResults,
+      note,
+    };
+  }
+
+  // 🔹 STATISTICS & ANALYTICS
+  async getHrStatistics(): Promise<HrStatisticsDto> {
+    const [
+      totalEmployees,
+      activeEmployees,
+      inactiveEmployees,
+      deletedEmployees,
+      employeesWithAccounts,
+      employeesWithWorkplaces,
+      departmentStats,
+      positionStats,
+      recentHires,
+      employeesWithTempPasswords,
+      salaryStats,
+    ] = await Promise.all([
+      this.employeeModel.countDocuments({ isDeleted: false }),
+      this.employeeModel.countDocuments({ status: 'active', isDeleted: false }),
+      this.employeeModel.countDocuments({
+        status: 'inactive',
+        isDeleted: false,
+      }),
+      this.employeeModel.countDocuments({ isDeleted: true }),
+      this.employeeModel.countDocuments({
+        userId: { $exists: true, $ne: null },
+        isDeleted: false,
+      }),
+      this.employeeModel.countDocuments({
+        primaryWorkplaceId: { $exists: true, $ne: null },
+        isDeleted: false,
+      }),
+      this.employeeModel.aggregate([
+        { $match: { isDeleted: false } },
+        {
+          $group: {
+            _id: '$department',
+            totalEmployees: { $sum: 1 },
+            activeEmployees: {
+              $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] },
+            },
+            inactiveEmployees: {
+              $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] },
+            },
+            totalSalary: { $sum: { $ifNull: ['$salary', 0] } },
+          },
+        },
+        {
+          $project: {
+            department: '$_id',
+            totalEmployees: 1,
+            activeEmployees: 1,
+            inactiveEmployees: 1,
+            averageSalary: { $divide: ['$totalSalary', '$totalEmployees'] },
+          },
+        },
+        { $sort: { totalEmployees: -1 } },
+      ]),
+      this.employeeModel.aggregate([
+        { $match: { isDeleted: false } },
+        {
+          $group: {
+            _id: '$position',
+            count: { $sum: 1 },
+            totalSalary: { $sum: { $ifNull: ['$salary', 0] } },
+          },
+        },
+        {
+          $project: {
+            position: '$_id',
+            count: 1,
+            averageSalary: { $divide: ['$totalSalary', '$count'] },
+          },
+        },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]),
+      this.employeeModel.countDocuments({
+        hireDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        isDeleted: false,
+      }),
+      this.employeeModel.countDocuments({
+        tempPassword: { $exists: true, $ne: null },
+        isDeleted: false,
+      }),
+      this.employeeModel.aggregate([
+        { $match: { isDeleted: false, salary: { $exists: true, $ne: null } } },
+        {
+          $group: {
+            _id: null,
+            averageSalary: { $avg: '$salary' },
+            totalSalary: { $sum: '$salary' },
+          },
+        },
+      ]),
+    ]);
+
+    const avgSalary = salaryStats[0]?.averageSalary || 0;
+    const totalSalaryBudget = salaryStats[0]?.totalSalary || 0;
+
+    return {
+      totalEmployees,
+      activeEmployees,
+      inactiveEmployees,
+      deletedEmployees,
+      employeesWithAccounts,
+      employeesWithoutAccounts: totalEmployees - employeesWithAccounts,
+      employeesWithWorkplaces,
+      employeesWithoutWorkplaces: totalEmployees - employeesWithWorkplaces,
+      totalDepartments: departmentStats.length,
+      totalPositions: positionStats.length,
+      averageSalary: Math.round(avgSalary),
+      totalSalaryBudget: Math.round(totalSalaryBudget),
+      departmentStats: departmentStats.map((stat) => ({
+        ...stat,
+        averageSalary: Math.round(stat.averageSalary),
+      })),
+      topPositions: positionStats.map((stat) => ({
+        ...stat,
+        averageSalary: Math.round(stat.averageSalary),
+      })),
+      recentHires,
+      employeesWithTempPasswords,
+    };
+  }
+
+  // 🔹 UTILITY METHODS
+  async getDepartments() {
+    const departments = await this.employeeModel
+      .distinct('department', { isDeleted: false })
+      .exec();
+    return departments.sort();
+  }
+
+  async getPositions() {
+    const positions = await this.employeeModel
+      .distinct('position', { isDeleted: false })
+      .exec();
+    return positions.sort();
+  }
+
+  async getEmployeesByDepartment(department: string) {
+    return this.employeeModel
+      .find({ department, isDeleted: false })
+      .select('fullName position email status')
+      .sort({ fullName: 1 })
+      .lean()
+      .exec();
+  }
+
+  async getEmployeesByPosition(position: string) {
+    return this.employeeModel
+      .find({ position, isDeleted: false })
+      .select('fullName department email status')
+      .sort({ fullName: 1 })
+      .lean()
+      .exec();
   }
 }
