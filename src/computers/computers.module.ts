@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { HttpModule } from '@nestjs/axios';
 import { ComputersService } from './computers.service';
 import { ComputersController } from './computers.controller';
 import { PublicComputersController } from './public-computers.controller';
@@ -17,8 +18,10 @@ import { AiService } from './ai.service';
       { name: Application.name, schema: ApplicationSchema },
       { name: Employee.name, schema: EmployeeSchema },
     ]),
+    HttpModule,
   ],
   controllers: [ComputersController, PublicComputersController],
   providers: [ComputersService, AiService],
+  exports: [AiService],
 })
 export class ComputersModule {}

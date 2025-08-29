@@ -57,10 +57,7 @@ export class ComputersController {
     @Body() body: AssignEmployeeDto,
     @CurrentUser() user: any,
   ) {
-    return this.computersService.assignEmployee(
-      device,
-      body.employeeId ?? null,
-    );
+    return this.computersService.assignEmployee(device, body);
   }
 
   /* -------------------- LOG LAR -------------------- */

@@ -95,9 +95,15 @@ export class ComputersService {
           } else {
             console.warn(`⚠️ No enrichment returned for ${app.name}`);
           }
+
+          // Delay between requests to prevent rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // 1 second delay
         }
       } catch (error) {
         console.error(`❌ Failed to enrich ${app.name}`, error);
+
+        // Even on error, add delay to prevent overwhelming the API
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
   }
@@ -108,16 +114,24 @@ export class ComputersService {
   }
 
   /** KOMPYUTERGA XODIMNI BIRIKTIRISH/AJRATISH */
-  async assignEmployee(device: string, employeeId: string | null) {
+  async assignEmployee(device: string, dto: { employeeId?: string | null; deviceRealName?: string | null }) {
     const computer = await this.computerModel.findOne({ name: device }).exec();
     if (!computer) throw new NotFoundException('Device topilmadi');
 
-    if (employeeId) {
-      const employee = await this.employeeModel.findById(employeeId).exec();
-      if (!employee) throw new NotFoundException('Employee topilmadi');
-      computer.assignedEmployeeId = (employee as any)._id;
-    } else {
-      computer.assignedEmployeeId = null;
+    // Update employee assignment
+    if (dto.employeeId !== undefined) {
+      if (dto.employeeId) {
+        const employee = await this.employeeModel.findById(dto.employeeId).exec();
+        if (!employee) throw new NotFoundException('Employee topilmadi');
+        computer.assignedEmployeeId = (employee as any)._id;
+      } else {
+        computer.assignedEmployeeId = null;
+      }
+    }
+
+    // Update device real name
+    if (dto.deviceRealName !== undefined) {
+      computer.deviceRealName = dto.deviceRealName;
     }
 
     await computer.save();
@@ -188,5 +202,15 @@ export class ComputersService {
   }
   async getApplicationByName(name: string) {
     return this.applicationModel.findOne({ name }).lean().exec();
+  }
+
+  /** AI service health check */
+  async checkAIHealth(): Promise<boolean> {
+    try {
+      return await this.aiService.healthCheck();
+    } catch (error) {
+      console.error('AI health check failed:', error);
+      return false;
+    }
   }
 }

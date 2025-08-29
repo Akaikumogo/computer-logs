@@ -19,6 +19,3 @@ export class Application extends Document {
 }
 
 export const ApplicationSchema = SchemaFactory.createForClass(Application);
-
-/* Index – tez qidirish uchun */
-ApplicationSchema.index({ name: 1 });
