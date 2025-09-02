@@ -7,6 +7,7 @@ import { HrModule } from './hr/hr.module';
 import { UploadModule } from './upload/upload.module';
 import { WorkplacesModule } from './workplaces/workplaces.module';
 import { AuthModule } from './auth/auth.module';
+import { AttendanceModule } from './attendance/attendance.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -27,6 +28,7 @@ import configuration from './config/configuration';
     UploadModule,
     WorkplacesModule,
     AuthModule,
+    AttendanceModule,
   ],
 })
 export class AppModule {}

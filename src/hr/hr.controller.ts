@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Controller,
   Get,
@@ -16,7 +15,6 @@ import {
 import { HrService } from './hr.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
-import { Employee } from '../schemas/employee.schema';
 import { EmployeeResponseDto } from './dto/employee-response.dto';
 import { EmployeeListResponseDto } from './dto/employee-list-response.dto';
 import { HrStatisticsDto } from './dto/hr-statistics.dto';
@@ -45,7 +43,6 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../auth/entities/user.entity';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('HR Management')
 @Controller('hr')
@@ -262,45 +259,12 @@ export class HrController {
   getStatistics() {
     return this.hrService.getHrStatistics();
   }
-
-  @Get('departments')
+  @Get('positions/simple')
   @ApiOperation({
-    summary: 'Get all unique departments',
+    summary: 'Get all unique position names',
     description:
-      'Retrieve a list of all departments in the system, sorted alphabetically.',
+      'Retrieve a simple list of all position names in the system, sorted alphabetically.',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Departments retrieved successfully',
-    schema: {
-      type: 'array',
-      items: { type: 'string' },
-      example: ['IT Department', 'HR Department', 'Finance Department'],
-    },
-  })
-  getDepartments() {
-    return this.hrService.getDepartments();
-  }
-
-  @Get('positions')
-  @ApiOperation({
-    summary: 'Get all unique positions',
-    description:
-      'Retrieve a list of all positions in the system, sorted alphabetically.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Positions retrieved successfully',
-    schema: {
-      type: 'array',
-      items: { type: 'string' },
-      example: ['Frontend Developer', 'Backend Developer', 'HR Manager'],
-    },
-  })
-  getPositions() {
-    return this.hrService.getPositions();
-  }
-
   @Get('departments/:department/employees')
   @ApiOperation({
     summary: 'Get employees by specific department',
@@ -370,6 +334,177 @@ export class HrController {
   getEmployeesByPosition(@Param('position') position: string) {
     return this.hrService.getEmployeesByPosition(position);
   }
+
+  // ==================== POSITION MANAGEMENT ====================
+
+  @Post('positions')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Create new position',
+    description: 'Create a new job position. Requires ADMIN or HR role.',
+  })
+  @ApiBody({
+    description: 'Position data (all fields optional except name)',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Position name (required)' },
+        status: {
+          type: 'string',
+          enum: ['active', 'inactive'],
+          description: 'Position status',
+        },
+      },
+      required: ['name'],
+    },
+    examples: {
+      basic: {
+        summary: 'Basic position',
+        value: {
+          name: 'Frontend Developer',
+          status: 'active',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Position created successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid position data',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Position name already exists',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions',
+  })
+  @HttpCode(HttpStatus.CREATED)
+  createPosition(@Body() positionData: any) {
+    return this.hrService.createPosition(positionData);
+  }
+
+  @Get('positions')
+  @ApiOperation({
+    summary: 'Get all positions',
+    description: 'Retrieve all job positions with optional filtering.',
+  })
+  @ApiQuery({
+    name: 'includeDeleted',
+    required: false,
+    description: 'Include soft-deleted positions',
+    example: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Positions retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          name: { type: 'string' },
+          status: { type: 'string' },
+          isDeleted: { type: 'boolean' },
+          createdAt: { type: 'string' },
+          updatedAt: { type: 'string' },
+        },
+      },
+    },
+  })
+  getPositions(@Query('includeDeleted') includeDeleted?: boolean) {
+    return this.hrService.getPositions(includeDeleted);
+  }
+
+  @Get('positions/simple')
+  @ApiOperation({
+    summary: 'Get position names for dropdowns',
+    description:
+      'Retrieve only position names and IDs for use in select dropdowns.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Position names retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          name: { type: 'string' },
+        },
+      },
+    },
+  })
+  getPositionNames() {
+    return this.hrService.getPositionNames();
+  }
+
+  // ==================== DEPARTMENT MANAGEMENT ====================
+
+  @Post('departments')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Create new department',
+    description:
+      'Create a new organizational department. Requires ADMIN or HR role.',
+  })
+  @ApiBody({
+    description: 'Department data (all fields optional except name)',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Department name (required)' },
+        status: {
+          type: 'string',
+          enum: ['active', 'inactive'],
+          description: 'Department status',
+        },
+      },
+      required: ['name'],
+    },
+    examples: {
+      basic: {
+        summary: 'Basic department',
+        value: {
+          name: 'IT Department',
+          status: 'active',
+        },
+      },
+    },
+  })
+  @Get('departments/simple')
+  @ApiOperation({
+    summary: 'Get department names for dropdowns',
+    description:
+      'Retrieve only department names and IDs for use in select dropdowns.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Department names retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          name: { type: 'string' },
+        },
+      },
+    },
+  })
+  getDepartmentNames() {
+    return this.hrService.getDepartmentNames();
+  }
+
+  // ==================== EMPLOYEE CRUD OPERATIONS ====================
 
   @Get(':id')
   @ApiOperation({
@@ -713,7 +848,8 @@ export class HrController {
   @ApiOperation({
     summary: 'Get employee credentials information',
     description:
-      "Retrieve information about an employee's user account and password status.",
+      // eslint-disable-next-line quotes
+      `Retrieve information about an employee's user account and password status.`,
   })
   @ApiParam({
     name: 'id',
@@ -998,5 +1134,330 @@ export class HrController {
       query.includeTemplate ?? false,
       query.status,
     );
+  }
+
+  @Get('positions/:id')
+  @ApiOperation({
+    summary: 'Get position by ID',
+    description: 'Retrieve detailed information about a specific position.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Position MongoDB ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Position found successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Position not found',
+  })
+  getPositionById(@Param('id') id: string) {
+    return this.hrService.getPositionById(id);
+  }
+
+  @Patch('positions/:id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Update position by ID',
+    description:
+      'Update specific fields of a position. Requires ADMIN or HR role.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Position MongoDB ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiBody({
+    description: 'Position fields to update (all optional)',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        status: { type: 'string', enum: ['active', 'inactive'] },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Position updated successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Position not found',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions',
+  })
+  updatePosition(@Param('id') id: string, @Body() updateData: any) {
+    return this.hrService.updatePosition(id, updateData);
+  }
+
+  @Patch('positions/:id/delete')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Soft delete position by ID',
+    description: 'Mark a position as deleted. Requires ADMIN role.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Position MongoDB ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Position soft-deleted successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Position not found',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Position is in use by employees',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions',
+  })
+  deletePosition(@Param('id') id: string) {
+    return this.hrService.deletePosition(id);
+  }
+
+  @Post('departments')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Create new department',
+    description:
+      'Create a new organizational department. Requires ADMIN or HR role.',
+  })
+  @ApiBody({
+    description: 'Department information',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'IT Department' },
+        status: {
+          type: 'string',
+          enum: ['active', 'inactive'],
+          example: 'active',
+        },
+      },
+      required: ['name'],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Department created successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid input data',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Department name already exists',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions',
+  })
+  @HttpCode(HttpStatus.CREATED)
+  createDepartment(@Body() departmentData: any) {
+    return this.hrService.createDepartment(departmentData);
+  }
+
+  @Get('departments')
+  @ApiOperation({
+    summary: 'Get all departments',
+    description:
+      'Retrieve all organizational departments with optional filtering.',
+  })
+  @ApiQuery({
+    name: 'includeDeleted',
+    required: false,
+    description: 'Include soft-deleted departments',
+    example: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Departments retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          name: { type: 'string' },
+          description: { type: 'string' },
+          code: { type: 'string' },
+          parentDepartmentId: { type: 'string' },
+          managerId: { type: 'string' },
+          status: { type: 'string' },
+          location: { type: 'string' },
+          contactPerson: { type: 'string' },
+          contactEmail: { type: 'string' },
+          contactPhone: { type: 'string' },
+          budget: { type: 'number' },
+          color: { type: 'string' },
+          createdAt: { type: 'string' },
+        },
+      },
+    },
+  })
+  getDepartments(@Query('includeDeleted') includeDeleted?: boolean) {
+    return this.hrService.getDepartments(includeDeleted);
+  }
+
+  @Get('departments/:id')
+  @ApiOperation({
+    summary: 'Get department by ID',
+    description: 'Retrieve detailed information about a specific department.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Department MongoDB ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Department found successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Department not found',
+  })
+  getDepartmentById(@Param('id') id: string) {
+    return this.hrService.getDepartmentById(id);
+  }
+
+  @Patch('departments/:id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Update department by ID',
+    description:
+      'Update specific fields of a department. Requires ADMIN or HR role.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Department MongoDB ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiBody({
+    description: 'Department fields to update (all optional)',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        status: { type: 'string', enum: ['active', 'inactive'] },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Department updated successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Department not found',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions',
+  })
+  updateDepartment(@Param('id') id: string, @Body() updateData: any) {
+    return this.hrService.updateDepartment(id, updateData);
+  }
+
+  @Patch('departments/:id/delete')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Soft delete department by ID',
+    description: 'Mark a department as deleted. Requires ADMIN role.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Department MongoDB ID',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Department soft-deleted successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Department not found',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Department is in use by employees',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions',
+  })
+  deleteDepartment(@Param('id') id: string) {
+    return this.hrService.deleteDepartment(id);
+  }
+
+  // ==================== MANAGEMENT PAGE ====================
+
+  @Get('management/overview')
+  @ApiOperation({
+    summary: 'Get management overview',
+    description:
+      'Retrieve overview data for positions and departments management page.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Management overview retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        positions: {
+          type: 'object',
+          properties: {
+            total: { type: 'number' },
+            active: { type: 'number' },
+            inactive: { type: 'number' },
+            withEmployees: { type: 'number' },
+            withoutEmployees: { type: 'number' },
+          },
+        },
+        departments: {
+          type: 'object',
+          properties: {
+            total: { type: 'number' },
+            active: { type: 'number' },
+            inactive: { type: 'number' },
+            withEmployees: { type: 'number' },
+            withoutEmployees: { type: 'number' },
+          },
+        },
+        recentChanges: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string' },
+              name: { type: 'string' },
+              action: { type: 'string' },
+              timestamp: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  getManagementOverview() {
+    return this.hrService.getManagementOverview();
   }
 }

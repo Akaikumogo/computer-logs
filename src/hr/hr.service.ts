@@ -14,6 +14,8 @@ import { Employee } from '../schemas/employee.schema';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Fingerprint } from '../schemas/fingerprint.schema';
+import { Position } from '../schemas/position.schema';
+import { Department } from '../schemas/department.schema';
 import { AuthService } from '../auth/auth.service';
 import { UserRole } from '../auth/entities/user.entity';
 import { GetEmployeesQueryDto } from './dto/get-employees-query.dto';
@@ -31,6 +33,8 @@ export class HrService {
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     @InjectModel(Fingerprint.name)
     private fingerprintModel: Model<Fingerprint>,
+    @InjectModel(Position.name) private positionModel: Model<Position>,
+    @InjectModel(Department.name) private departmentModel: Model<Department>,
     private authService: AuthService,
   ) {}
 
@@ -694,17 +698,151 @@ export class HrService {
     };
   }
 
-  // 🔹 UTILITY METHODS
-  async getDepartments() {
-    const departments = await this.employeeModel
-      .distinct('department', { isDeleted: false })
+  // 🔹 POSITION MANAGEMENT
+  async createPosition(positionData: Partial<Position>) {
+    try {
+      const position = new this.positionModel(positionData);
+      const savedPosition = await position.save();
+      return savedPosition.toObject();
+    } catch (err) {
+      if (err.code === 11000) {
+        throw new ConflictException('Position name allaqachon mavjud');
+      }
+      throw err;
+    }
+  }
+
+  async getPositions(includeDeleted = false) {
+    const filter: FilterQuery<Position> = {};
+    if (!includeDeleted) {
+      filter.isDeleted = false;
+    }
+
+    return this.positionModel.find(filter).sort({ name: 1 }).lean().exec();
+  }
+
+  async getPositionById(id: string) {
+    const position = await this.positionModel
+      .findOne({ _id: id, isDeleted: false })
+      .lean()
+      .exec();
+    if (!position) throw new NotFoundException('Position topilmadi');
+    return position;
+  }
+
+  async updatePosition(id: string, updateData: Partial<Position>) {
+    const position = await this.positionModel
+      .findOne({ _id: id, isDeleted: false })
+      .exec();
+    if (!position) throw new NotFoundException('Position topilmadi');
+
+    Object.assign(position, updateData);
+    await position.save();
+    return position.toObject();
+  }
+
+  async deletePosition(id: string) {
+    const position = await this.positionModel
+      .findOne({ _id: id, isDeleted: false })
+      .exec();
+    if (!position) throw new NotFoundException('Position topilmadi');
+
+    // Check if position is used by any employees
+    const employeeCount = await this.employeeModel
+      .countDocuments({ position: position.name, isDeleted: false })
+      .exec();
+
+    if (employeeCount > 0) {
+      throw new BadRequestException(
+        `Bu lavozim ${employeeCount} ta xodim tomonidan ishlatilmoqda. Avval xodimlarni boshqa lavozimga ko'chiring.`,
+      );
+    }
+
+    position.isDeleted = true;
+    position.deletedAt = new Date();
+    await position.save();
+
+    return position.toObject();
+  }
+
+  // 🔹 DEPARTMENT MANAGEMENT
+  async createDepartment(departmentData: Partial<Department>) {
+    try {
+      const department = new this.departmentModel(departmentData);
+      const savedDepartment = await department.save();
+      return savedDepartment.toObject();
+    } catch (err) {
+      if (err.code === 11000) {
+        throw new ConflictException('Department name allaqachon mavjud');
+      }
+      throw err;
+    }
+  }
+
+  async getDepartments(includeDeleted = false) {
+    const filter: FilterQuery<Department> = {};
+    if (!includeDeleted) {
+      filter.isDeleted = false;
+    }
+
+    return this.departmentModel.find(filter).sort({ name: 1 }).lean().exec();
+  }
+
+  async getDepartmentById(id: string) {
+    const department = await this.departmentModel
+      .findOne({ _id: id, isDeleted: false })
+      .lean()
+      .exec();
+    if (!department) throw new NotFoundException('Department topilmadi');
+    return department;
+  }
+
+  async updateDepartment(id: string, updateData: Partial<Department>) {
+    const department = await this.departmentModel
+      .findOne({ _id: id, isDeleted: false })
+      .exec();
+    if (!department) throw new NotFoundException('Department topilmadi');
+
+    Object.assign(department, updateData);
+    await department.save();
+    return department.toObject();
+  }
+
+  async deleteDepartment(id: string) {
+    const department = await this.departmentModel
+      .findOne({ _id: id, isDeleted: false })
+      .exec();
+    if (!department) throw new NotFoundException('Department topilmadi');
+
+    // Check if department is used by any employees
+    const employeeCount = await this.employeeModel
+      .countDocuments({ department: department.name, isDeleted: false })
+      .exec();
+
+    if (employeeCount > 0) {
+      throw new BadRequestException(
+        `Bu bo'lim ${employeeCount} ta xodim tomonidan ishlatilmoqda. Avval xodimlarni boshqa bo'limga ko'chiring.`,
+      );
+    }
+
+    department.isDeleted = true;
+    department.deletedAt = new Date();
+    await department.save();
+
+    return department.toObject();
+  }
+
+  // 🔹 UTILITY METHODS (Updated)
+  async getDepartmentNames() {
+    const departments = await this.departmentModel
+      .distinct('name', { isDeleted: false })
       .exec();
     return departments.sort();
   }
 
-  async getPositions() {
-    const positions = await this.employeeModel
-      .distinct('position', { isDeleted: false })
+  async getPositionNames() {
+    const positions = await this.positionModel
+      .distinct('name', { isDeleted: false })
       .exec();
     return positions.sort();
   }
@@ -725,5 +863,128 @@ export class HrService {
       .sort({ fullName: 1 })
       .lean()
       .exec();
+  }
+
+  // 🔹 MANAGEMENT OVERVIEW
+  async getManagementOverview() {
+    const [
+      positionStats,
+      departmentStats,
+      positionsWithEmployees,
+      departmentsWithEmployees,
+      recentPositions,
+      recentDepartments,
+    ] = await Promise.all([
+      // Position statistics
+      this.positionModel.aggregate([
+        { $match: { isDeleted: false } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+            inactive: {
+              $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+      // Department statistics
+      this.departmentModel.aggregate([
+        { $match: { isDeleted: false } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+            inactive: {
+              $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+      // Positions with employees
+      this.employeeModel.aggregate([
+        { $match: { isDeleted: false } },
+        { $group: { _id: '$position' } },
+        { $count: 'count' },
+      ]),
+      // Departments with employees
+      this.employeeModel.aggregate([
+        { $match: { isDeleted: false } },
+        { $group: { _id: '$department' } },
+        { $count: 'count' },
+      ]),
+      // Recent position changes
+      this.positionModel
+        .find({ isDeleted: false })
+        .sort({ updatedAt: -1 })
+        .limit(5)
+        .select('name updatedAt')
+        .lean()
+        .exec(),
+      // Recent department changes
+      this.departmentModel
+        .find({ isDeleted: false })
+        .sort({ updatedAt: -1 })
+        .limit(5)
+        .select('name updatedAt')
+        .lean()
+        .exec(),
+    ]);
+
+    const positionsWithEmployeesCount = positionsWithEmployees[0]?.count || 0;
+    const departmentsWithEmployeesCount =
+      departmentsWithEmployees[0]?.count || 0;
+
+    const positionData = positionStats[0] || {
+      total: 0,
+      active: 0,
+      inactive: 0,
+    };
+    const departmentData = departmentStats[0] || {
+      total: 0,
+      active: 0,
+      inactive: 0,
+    };
+
+    // Build recent changes
+    const recentChanges = [
+      ...recentPositions.map((pos: any) => ({
+        type: 'position',
+        name: pos.name,
+        action: 'updated',
+        timestamp: pos.updatedAt || pos.createdAt || new Date(),
+      })),
+      ...recentDepartments.map((dept: any) => ({
+        type: 'department',
+        name: dept.name,
+        action: 'updated',
+        timestamp: dept.updatedAt || dept.createdAt || new Date(),
+      })),
+    ]
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      )
+      .slice(0, 10);
+
+    return {
+      positions: {
+        total: positionData.total,
+        active: positionData.active,
+        inactive: positionData.inactive,
+        withEmployees: positionsWithEmployeesCount,
+        withoutEmployees: positionData.total - positionsWithEmployeesCount,
+      },
+      departments: {
+        total: departmentData.total,
+        active: departmentData.active,
+        inactive: departmentData.inactive,
+        withEmployees: departmentsWithEmployeesCount,
+        withoutEmployees: departmentData.total - departmentsWithEmployeesCount,
+      },
+      recentChanges,
+    };
   }
 }
