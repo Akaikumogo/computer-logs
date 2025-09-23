@@ -12,6 +12,9 @@ export class Employee extends Document {
   @Prop({ required: true })
   department: string;
 
+  @Prop({ required: true, unique: true })
+  tabRaqami: string;
+
   @Prop()
   hireDate?: Date;
 
@@ -21,11 +24,11 @@ export class Employee extends Document {
   @Prop({ unique: true, sparse: true })
   passportId?: string;
 
-  @Prop({ type: [String], required: true })
-  phones: string[];
+  @Prop({ type: [String], default: [] })
+  phones?: string[];
 
-  @Prop({ required: true, unique: true })
-  email: string;
+  @Prop({ unique: true, sparse: true })
+  email?: string;
 
   @Prop()
   address?: string;
@@ -68,6 +71,9 @@ export class Employee extends Document {
 
   @Prop({ required: false })
   tempPassword?: string;
+
+  @Prop({ required: false, unique: true, sparse: true })
+  fingerNumber?: string;
 }
 
 export const EmployeeSchema = SchemaFactory.createForClass(Employee);

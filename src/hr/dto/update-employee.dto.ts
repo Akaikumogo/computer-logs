@@ -42,6 +42,15 @@ export class UpdateEmployeeDto {
   department?: string;
 
   @ApiPropertyOptional({
+    description: 'Employee table number',
+    example: 'EMP001',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  tabRaqami?: string;
+
+  @ApiPropertyOptional({
     description: 'Hire date',
     example: '2025-01-15',
     required: false,
@@ -162,4 +171,13 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsString()
   tempPassword?: string;
+
+  @ApiPropertyOptional({
+    description: 'Barmoq raqami',
+    example: '12345',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  fingerNumber?: string;
 }

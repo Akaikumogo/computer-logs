@@ -28,6 +28,11 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   department: string;
 
+  @ApiProperty({ example: 'EMP001' })
+  @IsString()
+  @IsNotEmpty()
+  tabRaqami: string;
+
   @ApiProperty({ example: '2025-01-15', required: false })
   @IsOptional()
   @IsDateString()
@@ -43,18 +48,20 @@ export class CreateEmployeeDto {
   @IsString()
   passportId?: string;
 
-  @ApiProperty({ example: ['+998901234567', '+998933334455'] })
+  @ApiProperty({ example: ['+998901234567', '+998933334455'], required: false })
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @Matches(/^\+998[0-9]{9}$/, {
     each: true,
-    message: 'Telefon +998 formatida bo‘lishi kerak',
+    message: "Telefon +998 formatida bo'lishi kerak",
   })
-  phones: string[];
+  phones?: string[];
 
-  @ApiProperty({ example: 'test@example.com' })
+  @ApiProperty({ example: 'test@example.com', required: false })
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
 
   @ApiProperty({ example: 'Toshkent sh., Yunusobod tumani', required: false })
   @IsOptional()
@@ -80,4 +87,13 @@ export class CreateEmployeeDto {
   @IsArray()
   @IsString({ each: true })
   files?: string[];
+
+  @ApiProperty({
+    example: '12345',
+    required: false,
+    description: 'Barmoq raqami',
+  })
+  @IsOptional()
+  @IsString()
+  fingerNumber?: string;
 }

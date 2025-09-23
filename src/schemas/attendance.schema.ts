@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 export enum AttendanceType {
   IN = 'in',
@@ -11,7 +11,7 @@ export enum AttendanceStatus {
   LATE = 'late',
   EARLY = 'early',
   OVERTIME = 'overtime',
-  WARNING = 'warning',
+  ABSENT = 'absent',
 }
 
 @Schema({ timestamps: true })
@@ -22,23 +22,23 @@ export class Attendance extends Document {
     required: true,
     index: true,
   })
-  employeeId: Types.ObjectId;
+  employeeId: MongooseSchema.Types.ObjectId;
 
-  @Prop({ required: true, type: Date, index: true })
+  @Prop({ required: true })
   timestamp: Date;
 
-  @Prop({ required: true, enum: AttendanceType, index: true })
+  @Prop({ required: true, enum: AttendanceType })
   type: AttendanceType;
 
-  @Prop({ required: true, enum: AttendanceStatus, default: AttendanceStatus.NORMAL })
+  @Prop({ required: true, enum: AttendanceStatus })
   status: AttendanceStatus;
 
   @Prop({
     type: {
       latitude: { type: Number, required: true },
       longitude: { type: Number, required: true },
-      address: { type: String, required: false },
-      accuracy: { type: Number, required: false },
+      address: { type: String },
+      accuracy: { type: Number },
     },
     required: true,
   })
@@ -49,13 +49,18 @@ export class Attendance extends Document {
     accuracy?: number;
   };
 
-  @Prop({ required: false })
+  @Prop()
   device?: string;
 
-  @Prop({ required: false })
+  @Prop()
   notes?: string;
 
-  // 🔹 Warning uchun
+  @Prop()
+  image?: string;
+
+  @Prop()
+  imageUrl?: string;
+
   @Prop({ default: false })
   hasWarning: boolean;
 
@@ -74,11 +79,3 @@ export class Attendance extends Document {
 }
 
 export const AttendanceSchema = SchemaFactory.createForClass(Attendance);
-
-/* Indexlar - tez qidirish uchun */
-AttendanceSchema.index({ employeeId: 1, timestamp: -1 });
-AttendanceSchema.index({ timestamp: -1 });
-AttendanceSchema.index({ type: 1 });
-AttendanceSchema.index({ status: 1 });
-AttendanceSchema.index({ 'location.latitude': 1, 'location.longitude': 1 });
-AttendanceSchema.index({ hasWarning: 1 });

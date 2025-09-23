@@ -1,41 +1,33 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
+export type LocationDocument = Location & Document;
+
 @Schema({ timestamps: true })
-export class Location extends Document {
-  @Prop({ required: true, type: Number })
+export class Location {
+  @Prop({ required: true, unique: true })
+  name: string;
+
+  @Prop({ required: true })
+  address: string;
+
+  @Prop({ required: true })
   latitude: number;
 
-  @Prop({ required: true, type: Number })
+  @Prop({ required: true })
   longitude: number;
 
-  @Prop({ required: false })
-  address?: string;
+  @Prop({ default: 100 })
+  radius: number; // Radius in meters
 
-  @Prop({ required: false })
-  city?: string;
+  @Prop({ default: true })
+  isActive: boolean;
 
-  @Prop({ required: false })
-  country?: string;
-
-  @Prop({ required: false })
-  accuracy?: number;
-
-  @Prop({ required: false })
-  altitude?: number;
-
-  @Prop({ required: false })
-  speed?: number;
-
-  @Prop({ required: false })
-  heading?: number;
-
-  @Prop({ required: false })
-  deviceInfo?: string;
-
-  // 🔹 Soft delete uchun
   @Prop({ default: false })
   isDeleted: boolean;
+
+  @Prop()
+  description?: string;
 
   @Prop()
   deletedAt?: Date;
@@ -43,8 +35,7 @@ export class Location extends Document {
 
 export const LocationSchema = SchemaFactory.createForClass(Location);
 
-/* Indexlar - tez qidirish uchun */
+// Indexes for better performance
+LocationSchema.index({ name: 1 });
+LocationSchema.index({ isActive: 1, isDeleted: 1 });
 LocationSchema.index({ latitude: 1, longitude: 1 });
-LocationSchema.index({ city: 1 });
-LocationSchema.index({ country: 1 });
-LocationSchema.index({ isDeleted: 1 });

@@ -13,6 +13,9 @@ export class EmployeeResponseDto {
   @ApiProperty()
   department: string;
 
+  @ApiProperty()
+  tabRaqami: string;
+
   @ApiProperty({ required: false })
   hireDate?: Date;
 
@@ -57,6 +60,9 @@ export class EmployeeResponseDto {
 
   @ApiProperty({ required: false })
   tempPassword?: string;
+
+  @ApiProperty({ required: false, description: 'Barmoq raqami' })
+  fingerNumber?: string;
 
   @ApiProperty()
   createdAt: Date;

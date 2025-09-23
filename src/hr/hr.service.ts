@@ -1,5 +1,9 @@
+/* eslint-disable quotes */
+
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
+
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -17,7 +21,7 @@ import { Fingerprint } from '../schemas/fingerprint.schema';
 import { Position } from '../schemas/position.schema';
 import { Department } from '../schemas/department.schema';
 import { AuthService } from '../auth/auth.service';
-import { UserRole } from '../auth/entities/user.entity';
+// import { UserRole } from '../auth/entities/user.entity';
 import { GetEmployeesQueryDto } from './dto/get-employees-query.dto';
 import {
   BulkUpdateEmployeesDto,
@@ -26,6 +30,8 @@ import {
   BulkPasswordResetDto,
 } from './dto/bulk-employee-operations.dto';
 import { HrStatisticsDto } from './dto/hr-statistics.dto';
+import * as XLSX from 'xlsx';
+import { ExcelUploadResponseDto } from './dto/upload-excel.dto';
 
 @Injectable()
 export class HrService {
@@ -69,42 +75,62 @@ export class HrService {
       const username = this.generateUsername(dto.fullName);
       const password = this.generatePassword();
 
-      try {
-        // Create user account for the employee
-        const userAccount = await this.authService.register({
-          username,
-          email: dto.email,
-          password,
-          firstName: dto.fullName.split(' ')[0] || dto.fullName,
-          lastName: dto.fullName.split(' ').slice(1).join(' ') || '',
-          phone: dto.phones[0] || '',
-        });
+      // Only create user account if email is provided
+      if (dto.email) {
+        try {
+          const userAccount = await this.authService.register({
+            username,
+            email: dto.email,
+            password,
+            firstName: dto.fullName.split(' ')[0] || dto.fullName,
+            lastName: dto.fullName.split(' ').slice(1).join(' ') || '',
+            phone: dto.phones?.[0] || '',
+          });
 
-        // Update employee with user account info
-        savedEmployee.userId = userAccount.user.id as any; // Convert string to ObjectId
-        savedEmployee.username = username;
-        savedEmployee.tempPassword = password;
-        await savedEmployee.save();
+          // Update employee with user account info
+          savedEmployee.userId = userAccount.user.id as any; // Convert string to ObjectId
+          savedEmployee.username = username;
+          savedEmployee.tempPassword = password;
+          await savedEmployee.save();
 
+          return {
+            ...savedEmployee.toObject(),
+            userAccount: {
+              username,
+              password,
+              message:
+                'Employee account created successfully. Please change password on first login.',
+            },
+          };
+        } catch (userError) {
+          // If user creation fails, delete the employee and throw error
+          await this.employeeModel.findByIdAndDelete(savedEmployee._id);
+          throw new ConflictException(
+            `Employee created but user account creation failed: ${userError.message}`,
+          );
+        }
+      } else {
+        // No email provided, just return employee without user account
         return {
           ...savedEmployee.toObject(),
-          userAccount: {
-            username,
-            password,
-            message:
-              'Employee account created successfully. Please change password on first login.',
-          },
+          message:
+            'Employee created successfully. No user account created (email not provided).',
         };
-      } catch (userError) {
-        // If user creation fails, delete the employee and throw error
-        await this.employeeModel.findByIdAndDelete(savedEmployee._id);
-        throw new ConflictException(
-          `Employee created but user account creation failed: ${userError.message}`,
-        );
       }
     } catch (err) {
       if (err.code === 11000) {
-        throw new ConflictException('Email yoki Passport ID allaqachon mavjud');
+        if (err.keyPattern?.email) {
+          throw new ConflictException('Email allaqachon mavjud');
+        }
+        if (err.keyPattern?.passportId) {
+          throw new ConflictException('Passport ID allaqachon mavjud');
+        }
+        if (err.keyPattern?.tabRaqami) {
+          throw new ConflictException('Tab raqami allaqachon mavjud');
+        }
+        throw new ConflictException(
+          'Email, Passport ID yoki Tab raqami allaqachon mavjud',
+        );
       }
       throw err;
     }
@@ -195,13 +221,15 @@ export class HrService {
       }
     }
 
-    // Search filter (full name, position, department, email)
+    // Search filter (full name, position, department, email, tab raqami, passport ID)
     if (search) {
       filter.$or = [
         { fullName: { $regex: search, $options: 'i' } },
         { position: { $regex: search, $options: 'i' } },
         { department: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
+        { tabRaqami: { $regex: search, $options: 'i' } },
+        { passportId: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -259,43 +287,64 @@ export class HrService {
   }
 
   async getEmployeeById(id: string) {
-    const employee = await this.employeeModel
-      .findOne({ _id: id, isDeleted: false })
-      .lean()
-      .exec();
-    if (!employee) throw new NotFoundException('Employee topilmadi');
-    return employee;
+    try {
+      const employee = await this.employeeModel
+        .findOne({ _id: new Types.ObjectId(id), isDeleted: false })
+        .lean()
+        .exec();
+      if (!employee) throw new NotFoundException('Employee topilmadi');
+      return employee;
+    } catch (error) {
+      if (error.name === 'CastError') {
+        throw new BadRequestException('Invalid employee ID format');
+      }
+      throw error;
+    }
   }
 
   async updateEmployee(id: string, dto: UpdateEmployeeDto) {
-    const employee = await this.employeeModel
-      .findOne({ _id: id, isDeleted: false })
-      .exec();
-    if (!employee) throw new NotFoundException('Employee topilmadi');
+    try {
+      const employee = await this.employeeModel
+        .findOne({ _id: new Types.ObjectId(id), isDeleted: false })
+        .exec();
+      if (!employee) throw new NotFoundException('Employee topilmadi');
 
-    // Update only provided fields
-    Object.assign(employee, dto);
-    await employee.save();
+      // Update only provided fields
+      Object.assign(employee, dto);
+      await employee.save();
 
-    return employee.toObject();
+      return employee.toObject();
+    } catch (error) {
+      if (error.name === 'CastError') {
+        throw new BadRequestException('Invalid employee ID format');
+      }
+      throw error;
+    }
   }
 
   async deleteEmployee(id: string) {
-    const employee = await this.employeeModel
-      .findOne({ _id: id, isDeleted: false })
-      .exec();
-    if (!employee) throw new NotFoundException('Employee topilmadi');
+    try {
+      const result = await this.employeeModel.updateOne(
+        { _id: new Types.ObjectId(id), isDeleted: false },
+        { $set: { isDeleted: true, deletedAt: new Date() } },
+      );
 
-    employee.isDeleted = true;
-    employee.deletedAt = new Date();
-    await employee.save();
+      if (result.matchedCount === 0) {
+        throw new NotFoundException('Employee topilmadi');
+      }
 
-    return employee.toObject();
+      return { success: true };
+    } catch (error) {
+      if (error.name === 'CastError') {
+        throw new BadRequestException('Invalid employee ID format');
+      }
+      throw error;
+    }
   }
 
   async getEmployeeCredentials(employeeId: string) {
     const employee = await this.employeeModel
-      .findOne({ _id: employeeId, isDeleted: false })
+      .findOne({ _id: new Types.ObjectId(employeeId), isDeleted: false })
       .lean()
       .exec();
     if (!employee) throw new NotFoundException('Employee topilmadi');
@@ -319,7 +368,9 @@ export class HrService {
   async getAllEmployeeCredentials() {
     const employees = await this.employeeModel
       .find({ isDeleted: false, userId: { $exists: true, $ne: null } })
-      .select('fullName username email department position tempPassword')
+      .select(
+        'fullName username email department position tabRaqami tempPassword',
+      )
       .lean()
       .exec();
 
@@ -330,6 +381,7 @@ export class HrService {
       email: emp.email,
       department: emp.department,
       position: emp.position,
+      tabRaqami: emp.tabRaqami,
       hasTempPassword: !!emp.tempPassword,
       tempPassword: emp.tempPassword || null,
       note: emp.tempPassword
@@ -340,7 +392,7 @@ export class HrService {
 
   async resetEmployeePassword(employeeId: string) {
     const employee = await this.employeeModel
-      .findOne({ _id: employeeId, isDeleted: false })
+      .findOne({ _id: new Types.ObjectId(employeeId), isDeleted: false })
       .exec();
     if (!employee) throw new NotFoundException('Employee topilmadi');
 
@@ -362,13 +414,16 @@ export class HrService {
 
   async addFingerprint(employeeId: string, templateBase64: string) {
     const employee = await this.employeeModel
-      .findOne({ _id: employeeId, isDeleted: false })
+      .findOne({ _id: new Types.ObjectId(employeeId), isDeleted: false })
       .exec();
     if (!employee) throw new NotFoundException('Employee topilmadi');
 
     // Check fingerprint limit (max 10 per employee)
     const existingFingerprints = await this.fingerprintModel
-      .countDocuments({ employeeId, status: 'active' })
+      .countDocuments({
+        employeeId: new Types.ObjectId(employeeId),
+        status: 'active',
+      })
       .exec();
 
     if (existingFingerprints >= 10) {
@@ -376,7 +431,7 @@ export class HrService {
     }
 
     const fingerprint = new this.fingerprintModel({
-      employeeId,
+      employeeId: new Types.ObjectId(employeeId),
       template: templateBase64,
       status: 'active',
     });
@@ -392,7 +447,9 @@ export class HrService {
     includeTemplate = false,
     status?: 'active' | 'revoked',
   ) {
-    const filter: FilterQuery<Fingerprint> = { employeeId };
+    const filter: FilterQuery<Fingerprint> = {
+      employeeId: new Types.ObjectId(employeeId),
+    };
     if (status) filter.status = status;
 
     const skip = (page - 1) * limit;
@@ -432,7 +489,7 @@ export class HrService {
   ) {
     const filter: FilterQuery<Fingerprint> = {};
     if (status) filter.status = status;
-    if (employeeId) filter.employeeId = employeeId;
+    if (employeeId) filter.employeeId = new Types.ObjectId(employeeId);
 
     const skip = (page - 1) * limit;
     const [fingerprints, total] = await Promise.all([
@@ -474,7 +531,10 @@ export class HrService {
     }
 
     const result = await this.employeeModel.updateMany(
-      { _id: { $in: employeeIds }, isDeleted: false },
+      {
+        _id: { $in: employeeIds.map((id) => new Types.ObjectId(id)) },
+        isDeleted: false,
+      },
       { $set: updateData },
     );
 
@@ -489,7 +549,10 @@ export class HrService {
     const { employeeIds, reason } = dto;
 
     const result = await this.employeeModel.updateMany(
-      { _id: { $in: employeeIds }, isDeleted: false },
+      {
+        _id: { $in: employeeIds.map((id) => new Types.ObjectId(id)) },
+        isDeleted: false,
+      },
       {
         $set: {
           isDeleted: true,
@@ -511,7 +574,10 @@ export class HrService {
     const { employeeIds } = dto;
 
     const result = await this.employeeModel.updateMany(
-      { _id: { $in: employeeIds }, isDeleted: true },
+      {
+        _id: { $in: employeeIds.map((id) => new Types.ObjectId(id)) },
+        isDeleted: true,
+      },
       {
         $set: {
           isDeleted: false,
@@ -533,7 +599,7 @@ export class HrService {
 
     const employees = await this.employeeModel
       .find({
-        _id: { $in: employeeIds },
+        _id: { $in: employeeIds.map((id) => new Types.ObjectId(id)) },
         isDeleted: false,
         userId: { $exists: true, $ne: null },
       })
@@ -778,14 +844,11 @@ export class HrService {
       throw err;
     }
   }
-
-  async getDepartments(includeDeleted = false) {
-    const filter: FilterQuery<Department> = {};
-    if (!includeDeleted) {
-      filter.isDeleted = false;
-    }
-
-    return this.departmentModel.find(filter).sort({ name: 1 }).lean().exec();
+  async getDepartments() {
+    const departments = await this.departmentModel
+      .distinct('name', { isDeleted: false })
+      .exec();
+    return departments.sort();
   }
 
   async getDepartmentById(id: string) {
@@ -835,9 +898,9 @@ export class HrService {
   // 🔹 UTILITY METHODS (Updated)
   async getDepartmentNames() {
     const departments = await this.departmentModel
-      .distinct('name', { isDeleted: false })
-      .exec();
-    return departments.sort();
+      .find({ isDeleted: false })
+      .select('name');
+    return departments;
   }
 
   async getPositionNames() {
@@ -850,7 +913,7 @@ export class HrService {
   async getEmployeesByDepartment(department: string) {
     return this.employeeModel
       .find({ department, isDeleted: false })
-      .select('fullName position email status')
+      .select('fullName position tabRaqami email status')
       .sort({ fullName: 1 })
       .lean()
       .exec();
@@ -859,10 +922,275 @@ export class HrService {
   async getEmployeesByPosition(position: string) {
     return this.employeeModel
       .find({ position, isDeleted: false })
-      .select('fullName department email status')
+      .select('fullName department tabRaqami email status')
       .sort({ fullName: 1 })
       .lean()
       .exec();
+  }
+
+  // 🔹 EXCEL UPLOAD & IMPORT
+  async uploadExcelFile(
+    file: Express.Multer.File,
+  ): Promise<ExcelUploadResponseDto> {
+    try {
+      // Read Excel file
+      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      // Convert to JSON
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      if (jsonData.length < 2) {
+        throw new BadRequestException(
+          'Excel file must contain at least a header row and one data row',
+        );
+      }
+
+      // Find the actual header row (skip empty rows and title rows)
+      let headerRowIndex = 0;
+      for (let i = 0; i < Math.min(5, jsonData.length); i++) {
+        const row = jsonData[i] as any[];
+        if (row && row.some((cell) => cell && cell.toString().trim())) {
+          // Check if this row looks like headers (contains common header keywords)
+          const rowText = row.join(' ').toLowerCase();
+          if (
+            rowText.includes('f.i.o') ||
+            rowText.includes('ism') ||
+            rowText.includes('full name') ||
+            rowText.includes('lavozim') ||
+            rowText.includes('position') ||
+            rowText.includes("bo'lim") ||
+            rowText.includes('department') ||
+            rowText.includes('tab') ||
+            rowText.includes('telefon') ||
+            rowText.includes('phone') ||
+            rowText.includes('email')
+          ) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+      }
+
+      // Extract headers and data
+      const headers = jsonData[headerRowIndex] as string[];
+      const dataRows = jsonData.slice(headerRowIndex + 1) as any[][];
+
+      // Debug: Log the actual headers and first few rows
+      console.log('Excel Headers:', headers);
+      console.log('First 3 data rows:', dataRows.slice(0, 3));
+
+      // Expected columns mapping (Uzbek/Russian to English)
+      const columnMapping = {
+        'F.I.O': 'fullName',
+        'Ф.И.О': 'fullName',
+        'Full Name': 'fullName',
+        Ism: 'fullName',
+        'Ism Familiya': 'fullName',
+        "To'liq ism": 'fullName',
+        'Полное имя': 'fullName',
+        Имя: 'fullName',
+        Фамилия: 'fullName',
+        Name: 'fullName',
+        'Employee Name': 'fullName',
+        Lavozim: 'position',
+        Должность: 'position',
+        Position: 'position',
+        "Bo'lim": 'department',
+        Отдел: 'department',
+        Department: 'department',
+        'Tab raqami': 'tabRaqami',
+        'Табельный номер': 'tabRaqami',
+        'Employee ID': 'tabRaqami',
+        'Xodim raqami': 'tabRaqami',
+        ID: 'tabRaqami',
+        '№': 'tabRaqami',
+        Telefon: 'phone',
+        Телефон: 'phone',
+        Phone: 'phone',
+        Tel: 'phone',
+        Мобильный: 'phone',
+        'Телефонный номер': 'phone',
+        Email: 'email',
+        Почта: 'email',
+        Manzil: 'address',
+        Адрес: 'address',
+        Address: 'address',
+        Maosh: 'salary',
+        Зарплата: 'salary',
+        Salary: 'salary',
+        'Ishga qabul qilingan sana': 'hireDate',
+        'Дата приема': 'hireDate',
+        'Hire Date': 'hireDate',
+        "Tug'ilgan sana": 'birthDate',
+        'Дата рождения': 'birthDate',
+        'Birth Date': 'birthDate',
+        Passport: 'passportId',
+        Паспорт: 'passportId',
+        'Passport ID': 'passportId',
+      };
+
+      // Map headers to our field names
+      const mappedHeaders = headers.map((header) => {
+        const cleanHeader = header?.toString().trim();
+        return columnMapping[cleanHeader] || cleanHeader;
+      });
+
+      // Debug: Log the mapped headers
+      console.log('Mapped Headers:', mappedHeaders);
+
+      // Process data
+      const departments = new Set<string>();
+      const positions = new Set<string>();
+      const employees: any[] = [];
+      const errors: string[] = [];
+
+      for (let i = 0; i < dataRows.length; i++) {
+        const row = dataRows[i];
+        if (!row || row.every((cell) => !cell)) continue; // Skip empty rows
+
+        try {
+          const employeeData: any = {};
+
+          // Map row data to employee fields
+          mappedHeaders.forEach((field, index) => {
+            const value = row[index];
+            if (value !== undefined && value !== null && value !== '') {
+              switch (field) {
+                case 'fullName':
+                  employeeData.fullName = value.toString().trim();
+                  break;
+                case 'position':
+                  employeeData.position = value.toString().trim();
+                  positions.add(employeeData.position);
+                  break;
+                case 'department':
+                  employeeData.department = value.toString().trim();
+                  departments.add(employeeData.department);
+                  break;
+                case 'tabRaqami':
+                  employeeData.tabRaqami = value.toString().trim();
+                  break;
+                case 'phone':
+                  employeeData.phones = [value.toString().trim()];
+                  break;
+                case 'email':
+                  employeeData.email = value.toString().trim().toLowerCase();
+                  break;
+                case 'address':
+                  employeeData.address = value.toString().trim();
+                  break;
+                case 'salary': {
+                  const salary = parseFloat(value.toString());
+                  if (!isNaN(salary)) employeeData.salary = salary;
+                  break;
+                }
+                case 'hireDate': {
+                  const hireDate = new Date(value);
+                  if (!isNaN(hireDate.getTime()))
+                    employeeData.hireDate = hireDate;
+                  break;
+                }
+                case 'birthDate': {
+                  const birthDate = new Date(value);
+                  if (!isNaN(birthDate.getTime()))
+                    employeeData.birthDate = birthDate;
+                  break;
+                }
+                case 'passportId':
+                  employeeData.passportId = value.toString().trim();
+                  break;
+              }
+            }
+          });
+
+          // Validate required fields
+          if (!employeeData.fullName) {
+            errors.push(`Row ${i + 2}: Full name is required`);
+            continue;
+          }
+          if (!employeeData.position) {
+            errors.push(`Row ${i + 2}: Position is required`);
+            continue;
+          }
+          if (!employeeData.department) {
+            errors.push(`Row ${i + 2}: Department is required`);
+            continue;
+          }
+          if (!employeeData.tabRaqami) {
+            errors.push(`Row ${i + 2}: Tab raqami is required`);
+            continue;
+          }
+          // Email is now optional, no validation needed
+          // Phone numbers are now optional, no validation needed
+
+          // Set default values
+          employeeData.status = 'active';
+          employeeData.isDeleted = false;
+
+          employees.push(employeeData);
+        } catch (error) {
+          errors.push(`Row ${i + 2}: ${error.message}`);
+        }
+      }
+
+      // Create departments
+      let departmentsCreated = 0;
+      for (const deptName of departments) {
+        try {
+          await this.createDepartment({ name: deptName, status: 'active' });
+          departmentsCreated++;
+        } catch {
+          // Department might already exist, that's okay
+        }
+      }
+
+      // Create positions
+      let positionsCreated = 0;
+      for (const posName of positions) {
+        try {
+          await this.createPosition({ name: posName, status: 'active' });
+          positionsCreated++;
+        } catch {
+          // Position might already exist, that's okay
+        }
+      }
+
+      // Create employees
+      let employeesCreated = 0;
+      let employeesSkipped = 0;
+
+      for (const employeeData of employees) {
+        try {
+          await this.createEmployee(employeeData);
+          employeesCreated++;
+        } catch (error) {
+          if (error.code === 11000) {
+            employeesSkipped++;
+            errors.push(
+              `Employee ${employeeData.fullName}: Already exists (duplicate email, tab raqami, or passport ID)`,
+            );
+          } else {
+            errors.push(`Employee ${employeeData.fullName}: ${error.message}`);
+          }
+        }
+      }
+
+      return {
+        status: 'success',
+        departmentsCreated,
+        positionsCreated,
+        employeesCreated,
+        employeesSkipped,
+        errors,
+        message: `Successfully imported ${employeesCreated} employees, ${departmentsCreated} departments, and ${positionsCreated} positions. ${employeesSkipped} employees were skipped due to duplicates.`,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        `Excel file processing failed: ${error.message}`,
+      );
+    }
   }
 
   // 🔹 MANAGEMENT OVERVIEW

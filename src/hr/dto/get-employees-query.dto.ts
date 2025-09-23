@@ -13,7 +13,7 @@ import { Transform, Type } from 'class-transformer';
 
 export class GetEmployeesQueryDto {
   @ApiPropertyOptional({
-    description: 'Search query for full name, position, department, or email',
+    description: 'Search query for full name, position, department, email, tab raqami, or passport ID',
     example: 'developer',
     required: false,
   })
@@ -161,6 +161,7 @@ export class GetEmployeesQueryDto {
       'fullName',
       'position',
       'department',
+      'tabRaqami',
       'hireDate',
       'birthDate',
       'salary',
@@ -176,6 +177,7 @@ export class GetEmployeesQueryDto {
     'fullName',
     'position',
     'department',
+    'tabRaqami',
     'hireDate',
     'birthDate',
     'salary',
@@ -186,6 +188,7 @@ export class GetEmployeesQueryDto {
     | 'fullName'
     | 'position'
     | 'department'
+    | 'tabRaqami'
     | 'hireDate'
     | 'birthDate'
     | 'salary'

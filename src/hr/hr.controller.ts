@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
   Controller,
@@ -8,6 +9,7 @@ import {
   Body,
   Query,
   NotFoundException,
+  BadRequestException,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -43,6 +45,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../auth/entities/user.entity';
+import { UploadExcelDto, ExcelUploadResponseDto } from './dto/upload-excel.dto';
+import { UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('HR Management')
 @Controller('hr')
@@ -52,6 +57,72 @@ import { UserRole } from '../auth/entities/user.entity';
 @ApiProduces('application/json')
 export class HrController {
   constructor(private readonly hrService: HrService) {}
+
+  // ==================== EXCEL UPLOAD & IMPORT ====================
+
+  @Post('upload-excel')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary:
+      'Upload Excel file to import employees, departments, and positions',
+    description:
+      'Upload an Excel file containing employee data. The system will automatically create departments, positions, and employees based on the data. Supports multiple languages (Uzbek, Russian, English) for column headers.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Excel file upload with employee data',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx, .xls) containing employee data',
+        },
+        note: {
+          type: 'string',
+          description: 'Optional note about the upload',
+          example: 'Employee data import from HR system',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Excel file processed successfully',
+    type: ExcelUploadResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid file format or processing error',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions - requires ADMIN or HR role',
+  })
+  @HttpCode(HttpStatus.CREATED)
+  async uploadExcel(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+
+    // Validate file type
+    const allowedMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+    ];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        'Only Excel files (.xlsx, .xls) are allowed',
+      );
+    }
+
+    return this.hrService.uploadExcelFile(file);
+  }
 
   // ==================== EMPLOYEE CRUD OPERATIONS ====================
 
@@ -71,8 +142,7 @@ export class HrController {
           fullName: 'Sarvarbek Xazratov',
           position: 'Frontend Developer',
           department: 'IT Department',
-          phones: ['+998901234567'],
-          email: 'sarvarbek@example.com',
+          tabRaqami: 'EMP001',
         },
       },
       complete: {
@@ -81,6 +151,7 @@ export class HrController {
           fullName: 'Sarvarbek Xazratov',
           position: 'Frontend Developer',
           department: 'IT Department',
+          tabRaqami: 'EMP001',
           hireDate: '2025-01-15',
           birthDate: '2005-09-18',
           passportId: 'AA1234567',
@@ -89,6 +160,25 @@ export class HrController {
           address: 'Toshkent sh., Yunusobod tumani',
           salary: 1500,
           status: 'active',
+        },
+      },
+      withoutEmail: {
+        summary: 'Employee creation without email',
+        value: {
+          fullName: 'Sarvarbek Xazratov',
+          position: 'Frontend Developer',
+          department: 'IT Department',
+          tabRaqami: 'EMP001',
+          address: 'Toshkent sh., Yunusobod tumani',
+        },
+      },
+      minimal: {
+        summary: 'Minimal employee creation (only required fields)',
+        value: {
+          fullName: 'Sarvarbek Xazratov',
+          position: 'Frontend Developer',
+          department: 'IT Department',
+          tabRaqami: 'EMP001',
         },
       },
     },
@@ -121,7 +211,8 @@ export class HrController {
   @ApiQuery({
     name: 'search',
     required: false,
-    description: 'Search in full name, position, department, or email',
+    description:
+      'Search in full name, position, department, email, tab raqami, or passport ID',
     example: 'developer',
   })
   @ApiQuery({
@@ -210,6 +301,7 @@ export class HrController {
       'fullName',
       'position',
       'department',
+      'tabRaqami',
       'hireDate',
       'birthDate',
       'salary',
@@ -259,12 +351,6 @@ export class HrController {
   getStatistics() {
     return this.hrService.getHrStatistics();
   }
-  @Get('positions/simple')
-  @ApiOperation({
-    summary: 'Get all unique position names',
-    description:
-      'Retrieve a simple list of all position names in the system, sorted alphabetically.',
-  })
   @Get('departments/:department/employees')
   @ApiOperation({
     summary: 'Get employees by specific department',
@@ -286,6 +372,7 @@ export class HrController {
         properties: {
           fullName: { type: 'string' },
           position: { type: 'string' },
+          tabRaqami: { type: 'string' },
           email: { type: 'string' },
           status: { type: 'string' },
         },
@@ -321,6 +408,7 @@ export class HrController {
         properties: {
           fullName: { type: 'string' },
           department: { type: 'string' },
+          tabRaqami: { type: 'string' },
           email: { type: 'string' },
           status: { type: 'string' },
         },
@@ -448,38 +536,6 @@ export class HrController {
 
   // ==================== DEPARTMENT MANAGEMENT ====================
 
-  @Post('departments')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.HR)
-  @ApiOperation({
-    summary: 'Create new department',
-    description:
-      'Create a new organizational department. Requires ADMIN or HR role.',
-  })
-  @ApiBody({
-    description: 'Department data (all fields optional except name)',
-    schema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Department name (required)' },
-        status: {
-          type: 'string',
-          enum: ['active', 'inactive'],
-          description: 'Department status',
-        },
-      },
-      required: ['name'],
-    },
-    examples: {
-      basic: {
-        summary: 'Basic department',
-        value: {
-          name: 'IT Department',
-          status: 'active',
-        },
-      },
-    },
-  })
   @Get('departments/simple')
   @ApiOperation({
     summary: 'Get department names for dropdowns',
@@ -829,6 +885,7 @@ export class HrController {
           email: { type: 'string' },
           department: { type: 'string' },
           position: { type: 'string' },
+          tabRaqami: { type: 'string' },
           hasTempPassword: { type: 'boolean' },
           tempPassword: { type: 'string' },
           note: { type: 'string' },
@@ -1312,7 +1369,7 @@ export class HrController {
     },
   })
   getDepartments(@Query('includeDeleted') includeDeleted?: boolean) {
-    return this.hrService.getDepartments(includeDeleted);
+    return this.hrService.getDepartments();
   }
 
   @Get('departments/:id')
