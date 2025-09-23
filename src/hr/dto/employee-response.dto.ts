@@ -28,9 +28,6 @@ export class EmployeeResponseDto {
   @ApiProperty({ type: [String] })
   phones: string[];
 
-  @ApiProperty()
-  email: string;
-
   @ApiProperty({ required: false })
   address?: string;
 

@@ -67,72 +67,55 @@ export class HrService {
 
   async createEmployee(dto: CreateEmployeeDto) {
     try {
-      // Create employee first
-      const employee = new this.employeeModel(dto);
+      // Generate unique tabRaqami if it already exists
+      let tabRaqami = dto.tabRaqami;
+      let counter = 1;
+      while (
+        await this.employeeModel.findOne({ tabRaqami, isDeleted: false })
+      ) {
+        tabRaqami = `${dto.tabRaqami}_${counter}`;
+        counter++;
+      }
+
+      // Generate unique passportId if it already exists and is provided
+      let passportId = dto.passportId;
+      if (passportId) {
+        counter = 1;
+        while (
+          await this.employeeModel.findOne({ passportId, isDeleted: false })
+        ) {
+          passportId = `${dto.passportId}_${counter}`;
+          counter++;
+        }
+      }
+
+      // Create employee with unique values
+      const employeeData = {
+        ...dto,
+        tabRaqami,
+        passportId,
+      };
+
+      const employee = new this.employeeModel(employeeData);
       const savedEmployee = await employee.save();
 
-      // Generate username and password for the employee
-      const username = this.generateUsername(dto.fullName);
-      const password = this.generatePassword();
-
-      // Only create user account if email is provided
-      if (dto.email) {
-        try {
-          const userAccount = await this.authService.register({
-            username,
-            email: dto.email,
-            password,
-            firstName: dto.fullName.split(' ')[0] || dto.fullName,
-            lastName: dto.fullName.split(' ').slice(1).join(' ') || '',
-            phone: dto.phones?.[0] || '',
-          });
-
-          // Update employee with user account info
-          savedEmployee.userId = userAccount.user.id as any; // Convert string to ObjectId
-          savedEmployee.username = username;
-          savedEmployee.tempPassword = password;
-          await savedEmployee.save();
-
-          return {
-            ...savedEmployee.toObject(),
-            userAccount: {
-              username,
-              password,
-              message:
-                'Employee account created successfully. Please change password on first login.',
-            },
-          };
-        } catch (userError) {
-          // If user creation fails, delete the employee and throw error
-          await this.employeeModel.findByIdAndDelete(savedEmployee._id);
-          throw new ConflictException(
-            `Employee created but user account creation failed: ${userError.message}`,
-          );
-        }
-      } else {
-        // No email provided, just return employee without user account
-        return {
-          ...savedEmployee.toObject(),
-          message:
-            'Employee created successfully. No user account created (email not provided).',
-        };
-      }
+      // Return employee without user account
+      return {
+        ...savedEmployee.toObject(),
+        message: 'Employee created successfully. No user account created.',
+        warnings: [
+          ...(tabRaqami !== dto.tabRaqami
+            ? [`Tab raqami o'zgartirildi: ${tabRaqami}`]
+            : []),
+          ...(passportId && passportId !== dto.passportId
+            ? [`Passport ID o'zgartirildi: ${passportId}`]
+            : []),
+        ],
+      };
     } catch (err) {
-      if (err.code === 11000) {
-        if (err.keyPattern?.email) {
-          throw new ConflictException('Email allaqachon mavjud');
-        }
-        if (err.keyPattern?.passportId) {
-          throw new ConflictException('Passport ID allaqachon mavjud');
-        }
-        if (err.keyPattern?.tabRaqami) {
-          throw new ConflictException('Tab raqami allaqachon mavjud');
-        }
-        throw new ConflictException(
-          'Email, Passport ID yoki Tab raqami allaqachon mavjud',
-        );
-      }
-      throw err;
+      throw new BadRequestException(
+        `Employee yaratishda xatolik: ${err.message}`,
+      );
     }
   }
 
@@ -221,13 +204,12 @@ export class HrService {
       }
     }
 
-    // Search filter (full name, position, department, email, tab raqami, passport ID)
+    // Search filter (full name, position, department, tab raqami, passport ID)
     if (search) {
       filter.$or = [
         { fullName: { $regex: search, $options: 'i' } },
         { position: { $regex: search, $options: 'i' } },
         { department: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
         { tabRaqami: { $regex: search, $options: 'i' } },
         { passportId: { $regex: search, $options: 'i' } },
       ];
@@ -357,7 +339,6 @@ export class HrService {
       employeeId: employee._id,
       fullName: employee.fullName,
       username: employee.username,
-      email: employee.email,
       hasTempPassword: !!employee.tempPassword,
       note: employee.tempPassword
         ? 'Employee has temporary password'
@@ -368,9 +349,7 @@ export class HrService {
   async getAllEmployeeCredentials() {
     const employees = await this.employeeModel
       .find({ isDeleted: false, userId: { $exists: true, $ne: null } })
-      .select(
-        'fullName username email department position tabRaqami tempPassword',
-      )
+      .select('fullName username department position tabRaqami tempPassword')
       .lean()
       .exec();
 
@@ -378,7 +357,6 @@ export class HrService {
       employeeId: emp._id,
       fullName: emp.fullName,
       username: emp.username,
-      email: emp.email,
       department: emp.department,
       position: emp.position,
       tabRaqami: emp.tabRaqami,
@@ -913,7 +891,7 @@ export class HrService {
   async getEmployeesByDepartment(department: string) {
     return this.employeeModel
       .find({ department, isDeleted: false })
-      .select('fullName position tabRaqami email status')
+      .select('fullName position tabRaqami status')
       .sort({ fullName: 1 })
       .lean()
       .exec();
@@ -922,7 +900,7 @@ export class HrService {
   async getEmployeesByPosition(position: string) {
     return this.employeeModel
       .find({ position, isDeleted: false })
-      .select('fullName department tabRaqami email status')
+      .select('fullName department tabRaqami status')
       .sort({ fullName: 1 })
       .lean()
       .exec();
@@ -964,8 +942,7 @@ export class HrService {
             rowText.includes('department') ||
             rowText.includes('tab') ||
             rowText.includes('telefon') ||
-            rowText.includes('phone') ||
-            rowText.includes('email')
+            rowText.includes('phone')
           ) {
             headerRowIndex = i;
             break;
@@ -1012,8 +989,6 @@ export class HrService {
         Tel: 'phone',
         Мобильный: 'phone',
         'Телефонный номер': 'phone',
-        Email: 'email',
-        Почта: 'email',
         Manzil: 'address',
         Адрес: 'address',
         Address: 'address',
@@ -1075,9 +1050,6 @@ export class HrService {
                 case 'phone':
                   employeeData.phones = [value.toString().trim()];
                   break;
-                case 'email':
-                  employeeData.email = value.toString().trim().toLowerCase();
-                  break;
                 case 'address':
                   employeeData.address = value.toString().trim();
                   break;
@@ -1122,7 +1094,6 @@ export class HrService {
             errors.push(`Row ${i + 2}: Tab raqami is required`);
             continue;
           }
-          // Email is now optional, no validation needed
           // Phone numbers are now optional, no validation needed
 
           // Set default values
@@ -1163,17 +1134,18 @@ export class HrService {
 
       for (const employeeData of employees) {
         try {
-          await this.createEmployee(employeeData);
+          const result = await this.createEmployee(employeeData);
           employeesCreated++;
-        } catch (error) {
-          if (error.code === 11000) {
-            employeesSkipped++;
+
+          // Add warnings to errors array if any
+          if (result.warnings && result.warnings.length > 0) {
             errors.push(
-              `Employee ${employeeData.fullName}: Already exists (duplicate email, tab raqami, or passport ID)`,
+              `Employee ${employeeData.fullName}: ${result.warnings.join(', ')}`,
             );
-          } else {
-            errors.push(`Employee ${employeeData.fullName}: ${error.message}`);
           }
+        } catch (error) {
+          employeesSkipped++;
+          errors.push(`Employee ${employeeData.fullName}: ${error.message}`);
         }
       }
 

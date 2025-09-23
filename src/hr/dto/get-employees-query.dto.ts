@@ -13,7 +13,8 @@ import { Transform, Type } from 'class-transformer';
 
 export class GetEmployeesQueryDto {
   @ApiPropertyOptional({
-    description: 'Search query for full name, position, department, email, tab raqami, or passport ID',
+    description:
+      'Search query for full name, position, department, tab raqami, or passport ID',
     example: 'developer',
     required: false,
   })

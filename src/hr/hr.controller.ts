@@ -193,8 +193,9 @@ export class HrController {
     description: 'Invalid input data or validation errors',
   })
   @ApiResponse({
-    status: 409,
-    description: 'Email or Passport ID already exists',
+    status: 200,
+    description:
+      'Employee created successfully (duplicates handled automatically)',
   })
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateEmployeeDto) {

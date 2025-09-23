@@ -26,7 +26,6 @@ export class SeedSuperAdminService {
       // Create super admin
       const superAdmin = new this.userModel({
         username: 'superadmin',
-        email: 'superadmin@company.com',
         password: hashedPassword,
         role: UserRole.ADMIN,
         firstName: 'Super',

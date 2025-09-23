@@ -32,7 +32,7 @@ export class AuthController {
   //   description: 'User successfully registered',
   //   type: AuthResponseDto
   // })
-  // @ApiResponse({ status: 409, description: 'Username or email already exists' })
+  // @ApiResponse({ status: 409, description: 'Username already exists' })
   async register(@Body() registerDto: RegisterDto): Promise<AuthResponseDto> {
     return this.authService.register(registerDto);
   }
@@ -64,7 +64,6 @@ export class AuthController {
     return {
       id: user._id,
       username: user.username,
-      email: user.email,
       role: user.role,
       firstName: user.firstName,
       lastName: user.lastName,

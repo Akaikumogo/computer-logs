@@ -18,16 +18,15 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
-    const { username, email, password, firstName, lastName, phone } =
-      registerDto;
+    const { username, password, firstName, lastName, phone } = registerDto;
 
     // Check if user already exists
     const existingUser = await this.userModel.findOne({
-      $or: [{ username }, { email }],
+      username,
     });
 
     if (existingUser) {
-      throw new ConflictException('Username or email already exists');
+      throw new ConflictException('Username already exists');
     }
 
     // Hash password
@@ -36,7 +35,6 @@ export class AuthService {
     // Create new user
     const newUser = new this.userModel({
       username,
-      email,
       password: hashedPassword,
       firstName,
       lastName,
@@ -55,7 +53,6 @@ export class AuthService {
       user: {
         id: savedUser._id?.toString() || '',
         username: savedUser.username,
-        email: savedUser.email,
         role: savedUser.role,
         firstName: savedUser.firstName,
         lastName: savedUser.lastName,
@@ -66,9 +63,12 @@ export class AuthService {
   async login(loginDto: LoginDto): Promise<AuthResponseDto> {
     const { username, password } = loginDto;
 
-    // Find user by username or email
+    // Trim whitespace from username input
+    const trimmedUsername = username.trim();
+
+    // Find user by username only
     const user = await this.userModel.findOne({
-      $or: [{ username }, { email: username }],
+      username: trimmedUsername,
     });
 
     if (!user) {
@@ -95,7 +95,6 @@ export class AuthService {
       user: {
         id: user._id?.toString() || '',
         username: user.username,
-        email: user.email,
         role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
@@ -104,8 +103,11 @@ export class AuthService {
   }
 
   async validateUser(username: string, password: string): Promise<any> {
+    // Trim whitespace from username input
+    const trimmedUsername = username.trim();
+
     const user = await this.userModel.findOne({
-      $or: [{ username }, { email: username }],
+      username: trimmedUsername,
     });
 
     if (user && (await bcrypt.compare(password, user.password))) {

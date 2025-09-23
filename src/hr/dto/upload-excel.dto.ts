@@ -53,13 +53,14 @@ export class ExcelUploadResponseDto {
   @ApiProperty({
     description: 'Processing errors if any',
     type: [String],
-    example: ['Row 5: Invalid email format', 'Row 12: Missing required field'],
+    example: ['Row 5: Invalid data format', 'Row 12: Missing required field'],
   })
   errors: string[];
 
   @ApiProperty({
     description: 'Processing summary',
-    example: 'Successfully imported 45 employees, 5 departments, and 12 positions',
+    example:
+      'Successfully imported 45 employees, 5 departments, and 12 positions',
   })
   message: string;
 }

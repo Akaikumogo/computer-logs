@@ -27,8 +27,6 @@ export class Employee extends Document {
   @Prop({ type: [String], default: [] })
   phones?: string[];
 
-  @Prop({ unique: true, sparse: true })
-  email?: string;
 
   @Prop()
   address?: string;

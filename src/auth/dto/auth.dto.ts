@@ -1,16 +1,12 @@
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MinLength,
-} from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
-  @ApiProperty({ description: 'Username or email for login' })
+  @ApiProperty({ description: 'Username (tab raqami) for login' })
   @IsNotEmpty()
   @IsString()
+  @Transform(({ value }) => value?.trim())
   username: string;
 
   @ApiProperty({ description: 'User password' })
@@ -25,11 +21,6 @@ export class RegisterDto {
   @IsNotEmpty()
   @IsString()
   username: string;
-
-  @ApiProperty({ description: 'Email for the new user' })
-  @IsNotEmpty()
-  @IsEmail()
-  email: string;
 
   @ApiProperty({ description: 'Password for the new user' })
   @IsNotEmpty()
@@ -61,7 +52,6 @@ export class AuthResponseDto {
   user: {
     id: string;
     username: string;
-    email: string;
     role: string;
     firstName?: string;
     lastName?: string;

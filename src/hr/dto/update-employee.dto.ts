@@ -1,7 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString,
-  IsEmail,
   IsOptional,
   IsDateString,
   IsNumber,
@@ -11,7 +10,7 @@ import {
   Min,
   IsMongoId,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export class UpdateEmployeeDto {
   @ApiPropertyOptional({
@@ -86,15 +85,6 @@ export class UpdateEmployeeDto {
   @IsArray()
   @IsStringArray({ each: true })
   phones?: string[];
-
-  @ApiPropertyOptional({
-    description: 'Email address',
-    example: 'test@example.com',
-    required: false,
-  })
-  @IsOptional()
-  @IsEmail()
-  email?: string;
 
   @ApiPropertyOptional({
     description: 'Address',

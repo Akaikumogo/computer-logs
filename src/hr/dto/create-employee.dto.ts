@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsString,
-  IsEmail,
   IsNotEmpty,
   IsOptional,
   IsDateString,
@@ -11,6 +10,7 @@ import {
   IsArray,
   ArrayMinSize,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateEmployeeDto {
   @ApiProperty({ example: 'Sarvarbek Xazratov' })
@@ -57,11 +57,6 @@ export class CreateEmployeeDto {
     message: "Telefon +998 formatida bo'lishi kerak",
   })
   phones?: string[];
-
-  @ApiProperty({ example: 'test@example.com', required: false })
-  @IsOptional()
-  @IsEmail()
-  email?: string;
 
   @ApiProperty({ example: 'Toshkent sh., Yunusobod tumani', required: false })
   @IsOptional()
