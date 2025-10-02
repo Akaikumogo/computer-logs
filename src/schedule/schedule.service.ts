@@ -19,6 +19,7 @@ import {
   AttendanceStatus,
 } from '../schemas/attendance.schema';
 import { Employee } from '../schemas/employee.schema';
+import { Fingerprint } from '../schemas/fingerprint.schema';
 import { LocationService } from '../location/location.service';
 import { SnapshotService } from './snapshot.service';
 import {
@@ -42,6 +43,7 @@ export class ScheduleService {
   constructor(
     @InjectModel(Attendance.name) private attendanceModel: Model<Attendance>,
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
+    @InjectModel(Fingerprint.name) private fingerprintModel: Model<Fingerprint>,
     private locationService: LocationService,
     private snapshotService: SnapshotService,
   ) {}
@@ -222,18 +224,35 @@ export class ScheduleService {
   async checkInOutByFinger(fingerAttendanceDto: FingerAttendanceDto) {
     const { fingerNumber, location, device, notes } = fingerAttendanceDto;
 
-    // Barmoq raqami orqali xodimni topish
+    // Barmoq raqami orqali xodimni topish (Employee collection orqali)
     const employee = await this.employeeModel.findOne({
       fingerNumber: fingerNumber,
+      status: 'active',
       isDeleted: false,
     });
 
     if (!employee) {
-      throw new NotFoundException('Barmoq raqami topilmadi');
+      throw new NotFoundException('Barmoq raqami topilmadi yoki faol emas');
     }
 
-    // Validate location name
-    const locationData = await this.locationService.getLocationByName(location);
+    // Location ni topish (ID yoki nomi orqali)
+    let locationData;
+    if (Types.ObjectId.isValid(location)) {
+      // ID bo'lsa
+      locationData = await this.locationService.findOne(location);
+    } else {
+      // Nom bo'lsa
+      locationData = await this.locationService.getLocationByName(location);
+    }
+
+    if (!locationData) {
+      throw new NotFoundException('Location topilmadi');
+    }
+
+    // Xodimning location ga biriktirilganligini tekshirish
+    if (employee.primaryLocationId?.toString() !== locationData.id) {
+      throw new BadRequestException('Bu xodim bu location ga biriktirilmagan');
+    }
 
     // Create location data for attendance record
     const attendanceLocationData = {
@@ -322,6 +341,9 @@ export class ScheduleService {
       type,
       status,
       location: attendanceLocationData,
+      locationId: new Types.ObjectId(locationData.id),
+      locationName: locationData.name,
+      fingerprintNumber: fingerNumber,
       device,
       notes,
       ...(snapshotData

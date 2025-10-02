@@ -38,7 +38,6 @@ export class AuthController {
   }
 
   @Post('login')
-  @UseGuards(LocalAuthGuard)
   @ApiOperation({ summary: 'Login user' })
   @ApiResponse({
     status: 200,

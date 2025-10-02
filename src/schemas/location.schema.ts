@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 export type LocationDocument = Location & Document;
 
@@ -31,6 +31,39 @@ export class Location {
 
   @Prop()
   deletedAt?: Date;
+
+  // 🔹 WiFi ma'lumotlari
+  @Prop({ default: false })
+  hasWifi: boolean;
+
+  @Prop()
+  wifiName?: string;
+
+  @Prop()
+  wifiPassword?: string;
+
+  // 🔹 Javobgar shaxs
+  @Prop()
+  responsiblePerson?: string;
+
+  @Prop()
+  responsiblePersonPhone?: string;
+
+  @Prop()
+  responsiblePersonEmail?: string;
+
+  // 🔹 Qo'shimcha ma'lumotlar
+  @Prop()
+  workingHours?: string;
+
+  @Prop()
+  contactInfo?: string;
+
+  @Prop({ type: [String], default: [] })
+  images?: string[];
+
+  @Prop({ type: [String], default: [] })
+  facilities?: string[]; // Masalan: ["Parking", "Cafeteria", "Gym"]
 }
 
 export const LocationSchema = SchemaFactory.createForClass(Location);

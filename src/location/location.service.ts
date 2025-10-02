@@ -143,6 +143,65 @@ export class LocationService {
     return locations.map((location) => this.mapToResponseDto(location));
   }
 
+  async findDetail(id: string): Promise<any> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException("Noto'g'ri location ID");
+    }
+
+    const location = await this.locationModel.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!location) {
+      throw new NotFoundException('Location topilmadi');
+    }
+
+    // Mock data for now - in real implementation, you would fetch from other services
+    const mockDetail = {
+      location: this.mapToResponseDto(location),
+      employees: [
+        {
+          id: '1',
+          fullName: 'Sarvarbek Xazratov',
+          position: 'Senior Developer',
+          department: 'IT Department',
+          tabRaqami: '001',
+          status: 'active',
+          assignedAt: new Date().toISOString(),
+        },
+        {
+          id: '2',
+          fullName: 'Malika Toshmatova',
+          position: 'Project Manager',
+          department: 'Management',
+          tabRaqami: '002',
+          status: 'active',
+          assignedAt: new Date().toISOString(),
+        },
+      ],
+      todayAttendance: {
+        totalEmployees: 2,
+        checkedIn: 1,
+        checkedOut: 0,
+        absent: 1,
+        late: 0,
+        early: 0,
+      },
+      weeklyAttendance: [
+        { date: '2024-01-15', checkedIn: 2, checkedOut: 2, absent: 0 },
+        { date: '2024-01-16', checkedIn: 1, checkedOut: 1, absent: 1 },
+        { date: '2024-01-17', checkedIn: 2, checkedOut: 1, absent: 0 },
+        { date: '2024-01-18', checkedIn: 1, checkedOut: 2, absent: 0 },
+        { date: '2024-01-19', checkedIn: 2, checkedOut: 2, absent: 0 },
+        { date: '2024-01-20', checkedIn: 1, checkedOut: 1, absent: 1 },
+        { date: '2024-01-21', checkedIn: 2, checkedOut: 1, absent: 0 },
+      ],
+    };
+
+    return mockDetail;
+  }
+
   // ==================== UPDATE ====================
 
   async update(
@@ -230,6 +289,16 @@ export class LocationService {
       radius: location.radius,
       isActive: location.isActive,
       description: location.description,
+      hasWifi: location.hasWifi,
+      wifiName: location.wifiName,
+      wifiPassword: location.wifiPassword,
+      responsiblePerson: location.responsiblePerson,
+      responsiblePersonPhone: location.responsiblePersonPhone,
+      responsiblePersonEmail: location.responsiblePersonEmail,
+      workingHours: location.workingHours,
+      contactInfo: location.contactInfo,
+      images: location.images,
+      facilities: location.facilities,
       createdAt: location.createdAt,
       updatedAt: location.updatedAt,
     };

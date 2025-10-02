@@ -116,6 +116,18 @@ export class LocationController {
     return this.locationService.findOne(id);
   }
 
+  @Get(':id/detail')
+  @ApiOperation({
+    summary: "Location to'liq ma'lumoti",
+    description: 'Location, xodimlar va davomat statistikasi bilan',
+  })
+  @ApiParam({ name: 'id', description: 'Location ID' })
+  @ApiResponse({ status: 200, description: "Location to'liq ma'lumoti" })
+  @ApiResponse({ status: 404, description: 'Location topilmadi' })
+  async findDetail(@Param('id') id: string) {
+    return this.locationService.findDetail(id);
+  }
+
   // ==================== UPDATE ====================
 
   @Patch(':id')

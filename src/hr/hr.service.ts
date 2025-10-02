@@ -8,6 +8,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   BadRequestException,
@@ -18,6 +19,8 @@ import { Employee } from '../schemas/employee.schema';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Fingerprint } from '../schemas/fingerprint.schema';
+import { Location } from '../schemas/location.schema';
+import { LocationService } from '../location/location.service';
 import { Position } from '../schemas/position.schema';
 import { Department } from '../schemas/department.schema';
 import { AuthService } from '../auth/auth.service';
@@ -35,13 +38,17 @@ import { ExcelUploadResponseDto } from './dto/upload-excel.dto';
 
 @Injectable()
 export class HrService {
+  private readonly logger = new Logger(HrService.name);
+
   constructor(
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     @InjectModel(Fingerprint.name)
     private fingerprintModel: Model<Fingerprint>,
     @InjectModel(Position.name) private positionModel: Model<Position>,
     @InjectModel(Department.name) private departmentModel: Model<Department>,
+    @InjectModel(Location.name) private locationModel: Model<Location>,
     private authService: AuthService,
+    private locationService: LocationService,
   ) {}
 
   private generateUsername(fullName: string): string {
@@ -1286,5 +1293,48 @@ export class HrService {
       },
       recentChanges,
     };
+  }
+
+  // ==================== LOCATION ASSIGNMENT ====================
+
+  async assignEmployeeToLocation(
+    employeeId: string,
+    locationId: string,
+  ): Promise<{ message: string }> {
+    const employee = await this.employeeModel.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+
+    // Location ni tekshirish
+    const location = await this.locationService.findOne(locationId);
+    if (!location) {
+      throw new NotFoundException('Location topilmadi');
+    }
+
+    employee.primaryLocationId = locationId as any;
+    employee.primaryLocationName = location.name;
+    await employee.save();
+
+    this.logger.log(`Xodim ${employee.fullName} location ga biriktirildi`);
+
+    return { message: 'Xodim location ga muvaffaqiyatli biriktirildi' };
+  }
+
+  async removeEmployeeFromLocation(
+    employeeId: string,
+  ): Promise<{ message: string }> {
+    const employee = await this.employeeModel.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+
+    employee.primaryLocationId = null;
+    employee.primaryLocationName = undefined;
+    await employee.save();
+
+    this.logger.log(`Xodim ${employee.fullName} location dan olib tashlandi`);
+
+    return { message: 'Xodim location dan muvaffaqiyatli olib tashlandi' };
   }
 }

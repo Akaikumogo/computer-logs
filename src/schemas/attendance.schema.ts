@@ -49,6 +49,25 @@ export class Attendance extends Document {
     accuracy?: number;
   };
 
+  // 🔹 Location-based attendance
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Location',
+    required: false,
+    index: true,
+  })
+  locationId?: MongooseSchema.Types.ObjectId;
+
+  @Prop()
+  locationName?: string;
+
+  // 🔹 Fingerprint-based attendance
+  @Prop()
+  fingerprintId?: string;
+
+  @Prop()
+  fingerprintNumber?: string;
+
   @Prop()
   device?: string;
 

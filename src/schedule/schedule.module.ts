@@ -5,6 +5,7 @@ import { ScheduleService } from './schedule.service';
 import { SnapshotService } from './snapshot.service';
 import { Attendance, AttendanceSchema } from '../schemas/attendance.schema';
 import { Employee, EmployeeSchema } from '../schemas/employee.schema';
+import { Fingerprint, FingerprintSchema } from '../schemas/fingerprint.schema';
 import { AuthModule } from '../auth/auth.module';
 import { LocationModule } from '../location/location.module';
 
@@ -13,6 +14,7 @@ import { LocationModule } from '../location/location.module';
     MongooseModule.forFeature([
       { name: Attendance.name, schema: AttendanceSchema },
       { name: Employee.name, schema: EmployeeSchema },
+      { name: Fingerprint.name, schema: FingerprintSchema },
     ]),
     AuthModule,
     LocationModule,

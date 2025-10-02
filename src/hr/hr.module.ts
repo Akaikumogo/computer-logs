@@ -6,7 +6,9 @@ import { Employee, EmployeeSchema } from '../schemas/employee.schema';
 import { Fingerprint, FingerprintSchema } from '../schemas/fingerprint.schema';
 import { Position, PositionSchema } from '../schemas/position.schema';
 import { Department, DepartmentSchema } from '../schemas/department.schema';
+import { Location, LocationSchema } from '../schemas/location.schema';
 import { AuthModule } from '../auth/auth.module';
+import { LocationModule } from '../location/location.module';
 
 @Module({
   imports: [
@@ -15,8 +17,10 @@ import { AuthModule } from '../auth/auth.module';
       { name: Fingerprint.name, schema: FingerprintSchema },
       { name: Position.name, schema: PositionSchema },
       { name: Department.name, schema: DepartmentSchema },
+      { name: Location.name, schema: LocationSchema },
     ]),
     AuthModule,
+    LocationModule,
   ],
   controllers: [HrController],
   providers: [HrService],

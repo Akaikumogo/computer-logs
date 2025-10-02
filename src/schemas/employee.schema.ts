@@ -55,6 +55,18 @@ export class Employee extends Document {
   })
   primaryWorkplaceId?: MongooseSchema.Types.ObjectId | null;
 
+  // 🔹 Location assignment
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Location',
+    required: false,
+    index: true,
+  })
+  primaryLocationId?: MongooseSchema.Types.ObjectId | null;
+
+  @Prop()
+  primaryLocationName?: string;
+
   // 🔐 User account linking
   @Prop({
     type: MongooseSchema.Types.ObjectId,

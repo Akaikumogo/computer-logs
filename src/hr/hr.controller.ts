@@ -5,6 +5,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -1517,5 +1518,94 @@ export class HrController {
   })
   getManagementOverview() {
     return this.hrService.getManagementOverview();
+  }
+
+  // ==================== LOCATION ASSIGNMENT ====================
+
+  @Post('employees/:employeeId/assign-location')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Assign employee to location',
+    description:
+      'Assign an employee to a specific location. Requires ADMIN or HR role.',
+  })
+  @ApiParam({
+    name: 'employeeId',
+    description: 'Employee ID',
+    example: '64f1a2b3c4d5e6f7g8h9i0j1',
+  })
+  @ApiBody({
+    description: 'Location assignment data',
+    schema: {
+      type: 'object',
+      properties: {
+        locationId: {
+          type: 'string',
+          description: 'Location ID to assign',
+          example: '64f1a2b3c4d5e6f7g8h9i0j2',
+        },
+      },
+      required: ['locationId'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Employee assigned to location successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Employee not found',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied - ADMIN or HR role required',
+  })
+  assignEmployeeToLocation(
+    @Param('employeeId') employeeId: string,
+    @Body('locationId') locationId: string,
+  ) {
+    return this.hrService.assignEmployeeToLocation(employeeId, locationId);
+  }
+
+  @Delete('employees/:employeeId/remove-location')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Remove employee from location',
+    description:
+      'Remove an employee from their assigned location. Requires ADMIN or HR role.',
+  })
+  @ApiParam({
+    name: 'employeeId',
+    description: 'Employee ID',
+    example: '64f1a2b3c4d5e6f7g8h9i0j1',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Employee removed from location successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Employee not found',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied - ADMIN or HR role required',
+  })
+  removeEmployeeFromLocation(@Param('employeeId') employeeId: string) {
+    return this.hrService.removeEmployeeFromLocation(employeeId);
   }
 }

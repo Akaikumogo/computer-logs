@@ -7,6 +7,8 @@ import {
   IsBoolean,
   Min,
   Max,
+  IsEmail,
+  IsArray,
 } from 'class-validator';
 
 export class CreateLocationDto {
@@ -55,6 +57,61 @@ export class CreateLocationDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // 🔹 WiFi ma'lumotlari
+  @ApiPropertyOptional({ description: 'WiFi mavjudligi', example: true })
+  @IsOptional()
+  @IsBoolean()
+  hasWifi?: boolean;
+
+  @ApiPropertyOptional({ description: 'WiFi nomi', example: 'Office_WiFi' })
+  @IsOptional()
+  @IsString()
+  wifiName?: string;
+
+  @ApiPropertyOptional({ description: 'WiFi paroli', example: 'office123' })
+  @IsOptional()
+  @IsString()
+  wifiPassword?: string;
+
+  // 🔹 Javobgar shaxs
+  @ApiPropertyOptional({ description: 'Javobgar shaxs', example: 'Ahmad Karimov' })
+  @IsOptional()
+  @IsString()
+  responsiblePerson?: string;
+
+  @ApiPropertyOptional({ description: 'Javobgar shaxs telefoni', example: '+998901234567' })
+  @IsOptional()
+  @IsString()
+  responsiblePersonPhone?: string;
+
+  @ApiPropertyOptional({ description: 'Javobgar shaxs email', example: 'ahmad@company.com' })
+  @IsOptional()
+  @IsEmail()
+  responsiblePersonEmail?: string;
+
+  // 🔹 Qo'shimcha ma'lumotlar
+  @ApiPropertyOptional({ description: 'Ish vaqtlari', example: '9:00-18:00' })
+  @IsOptional()
+  @IsString()
+  workingHours?: string;
+
+  @ApiPropertyOptional({ description: 'Aloqa ma\'lumotlari', example: '+998901234567' })
+  @IsOptional()
+  @IsString()
+  contactInfo?: string;
+
+  @ApiPropertyOptional({ description: 'Rasmlar', example: ['image1.jpg', 'image2.jpg'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
+
+  @ApiPropertyOptional({ description: 'Imkoniyatlar', example: ['Parking', 'Cafeteria'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  facilities?: string[];
 }
 
 export class UpdateLocationDto {
@@ -103,6 +160,61 @@ export class UpdateLocationDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // 🔹 WiFi ma'lumotlari
+  @ApiPropertyOptional({ description: 'WiFi mavjudligi', example: true })
+  @IsOptional()
+  @IsBoolean()
+  hasWifi?: boolean;
+
+  @ApiPropertyOptional({ description: 'WiFi nomi', example: 'Office_WiFi' })
+  @IsOptional()
+  @IsString()
+  wifiName?: string;
+
+  @ApiPropertyOptional({ description: 'WiFi paroli', example: 'office123' })
+  @IsOptional()
+  @IsString()
+  wifiPassword?: string;
+
+  // 🔹 Javobgar shaxs
+  @ApiPropertyOptional({ description: 'Javobgar shaxs', example: 'Ahmad Karimov' })
+  @IsOptional()
+  @IsString()
+  responsiblePerson?: string;
+
+  @ApiPropertyOptional({ description: 'Javobgar shaxs telefoni', example: '+998901234567' })
+  @IsOptional()
+  @IsString()
+  responsiblePersonPhone?: string;
+
+  @ApiPropertyOptional({ description: 'Javobgar shaxs email', example: 'ahmad@company.com' })
+  @IsOptional()
+  @IsEmail()
+  responsiblePersonEmail?: string;
+
+  // 🔹 Qo'shimcha ma'lumotlar
+  @ApiPropertyOptional({ description: 'Ish vaqtlari', example: '9:00-18:00' })
+  @IsOptional()
+  @IsString()
+  workingHours?: string;
+
+  @ApiPropertyOptional({ description: 'Aloqa ma\'lumotlari', example: '+998901234567' })
+  @IsOptional()
+  @IsString()
+  contactInfo?: string;
+
+  @ApiPropertyOptional({ description: 'Rasmlar', example: ['image1.jpg', 'image2.jpg'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
+
+  @ApiPropertyOptional({ description: 'Imkoniyatlar', example: ['Parking', 'Cafeteria'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  facilities?: string[];
 }
 
 export class LocationResponseDto {
@@ -129,6 +241,39 @@ export class LocationResponseDto {
 
   @ApiPropertyOptional({ description: 'Tavsif' })
   description?: string;
+
+  // 🔹 WiFi ma'lumotlari
+  @ApiPropertyOptional({ description: 'WiFi mavjudligi' })
+  hasWifi?: boolean;
+
+  @ApiPropertyOptional({ description: 'WiFi nomi' })
+  wifiName?: string;
+
+  @ApiPropertyOptional({ description: 'WiFi paroli' })
+  wifiPassword?: string;
+
+  // 🔹 Javobgar shaxs
+  @ApiPropertyOptional({ description: 'Javobgar shaxs' })
+  responsiblePerson?: string;
+
+  @ApiPropertyOptional({ description: 'Javobgar shaxs telefoni' })
+  responsiblePersonPhone?: string;
+
+  @ApiPropertyOptional({ description: 'Javobgar shaxs email' })
+  responsiblePersonEmail?: string;
+
+  // 🔹 Qo'shimcha ma'lumotlar
+  @ApiPropertyOptional({ description: 'Ish vaqtlari' })
+  workingHours?: string;
+
+  @ApiPropertyOptional({ description: 'Aloqa ma\'lumotlari' })
+  contactInfo?: string;
+
+  @ApiPropertyOptional({ description: 'Rasmlar' })
+  images?: string[];
+
+  @ApiPropertyOptional({ description: 'Imkoniyatlar' })
+  facilities?: string[];
 
   @ApiProperty({ description: 'Yaratilgan vaqt' })
   createdAt: Date;
