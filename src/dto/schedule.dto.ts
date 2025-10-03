@@ -67,10 +67,19 @@ export class CheckInDto {
   @IsEnum(AttendanceType)
   type: AttendanceType;
 
-  @ApiProperty({ description: 'Location nomi', example: 'Bosh Ofis' })
+  @ApiPropertyOptional({
+    description: "GPS ma'lumotlari",
+    type: LocationDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
+
+  @ApiPropertyOptional({ description: 'Location nomi', example: 'Bosh Ofis' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  location: string;
+  locationName?: string;
 
   @ApiPropertyOptional({
     description: "Qurilma ma'lumoti",
@@ -100,10 +109,19 @@ export class CheckOutDto {
   @IsEnum(AttendanceType)
   type: AttendanceType;
 
-  @ApiProperty({ description: 'Location nomi', example: 'Bosh Ofis' })
+  @ApiPropertyOptional({
+    description: "GPS ma'lumotlari",
+    type: LocationDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
+
+  @ApiPropertyOptional({ description: 'Location nomi', example: 'Bosh Ofis' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  location: string;
+  locationName?: string;
 
   @ApiPropertyOptional({
     description: "Qurilma ma'lumoti",
@@ -120,15 +138,32 @@ export class CheckOutDto {
 }
 
 export class FingerAttendanceDto {
-  @ApiProperty({ description: 'Barmoq raqami', example: '12345' })
+  @ApiProperty({ description: 'Barmoq izi ID', example: '12345' })
   @IsString()
   @IsNotEmpty()
-  fingerNumber: string;
+  fingerprintId: string;
 
-  @ApiProperty({ description: 'Location nomi', example: 'Bosh Ofis' })
+  @ApiProperty({ description: 'Turi', enum: ['checkin', 'checkout'] })
   @IsString()
   @IsNotEmpty()
-  location: string;
+  type: 'checkin' | 'checkout';
+
+  @ApiPropertyOptional({
+    description: "GPS ma'lumotlari",
+    type: LocationDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
+
+  @ApiPropertyOptional({
+    description: 'Location nomi',
+    example: 'Bosh Ofis',
+  })
+  @IsOptional()
+  @IsString()
+  locationName?: string;
 
   @ApiPropertyOptional({
     description: "Qurilma ma'lumoti",

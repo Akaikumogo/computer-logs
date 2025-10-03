@@ -51,10 +51,12 @@ export class ScheduleService {
   // ==================== CHECK IN/OUT OPERATIONS ====================
 
   async checkIn(checkInDto: CheckInDto) {
-    const { employeeId, location, device, notes } = checkInDto;
+    const { employeeId, location, locationName, device, notes } = checkInDto;
 
     // Validate location name
-    const locationData = await this.locationService.getLocationByName(location);
+    const locationData = await this.locationService.getLocationByName(
+      locationName || 'default',
+    );
 
     // Create location data for attendance record
     const attendanceLocationData = {
@@ -130,10 +132,12 @@ export class ScheduleService {
   }
 
   async checkOut(checkOutDto: CheckOutDto) {
-    const { employeeId, location, device, notes } = checkOutDto;
+    const { employeeId, location, locationName, device, notes } = checkOutDto;
 
     // Validate location name
-    const locationData = await this.locationService.getLocationByName(location);
+    const locationData = await this.locationService.getLocationByName(
+      locationName || 'default',
+    );
 
     // Create location data for attendance record
     const attendanceLocationData = {
@@ -222,28 +226,24 @@ export class ScheduleService {
   }
 
   async checkInOutByFinger(fingerAttendanceDto: FingerAttendanceDto) {
-    const { fingerNumber, location, device, notes } = fingerAttendanceDto;
+    const { fingerprintId, location, locationName, device, notes } =
+      fingerAttendanceDto;
 
-    // Barmoq raqami orqali xodimni topish (Employee collection orqali)
-    const employee = await this.employeeModel.findOne({
-      fingerNumber: fingerNumber,
-      status: 'active',
-      isDeleted: false,
-    });
+    // Barmoq izi orqali xodimni topish
+    const fingerprint = await this.fingerprintModel.findOne({ fingerprintId });
+    if (!fingerprint) {
+      throw new NotFoundException('Barmoq izi topilmadi');
+    }
 
+    const employee = await this.employeeModel.findById(fingerprint.employeeId);
     if (!employee) {
-      throw new NotFoundException('Barmoq raqami topilmadi yoki faol emas');
+      throw new NotFoundException('Xodim topilmadi');
     }
 
-    // Location ni topish (ID yoki nomi orqali)
-    let locationData;
-    if (Types.ObjectId.isValid(location)) {
-      // ID bo'lsa
-      locationData = await this.locationService.findOne(location);
-    } else {
-      // Nom bo'lsa
-      locationData = await this.locationService.getLocationByName(location);
-    }
+    // Location ni topish
+    const locationData = await this.locationService.getLocationByName(
+      locationName || 'default',
+    );
 
     if (!locationData) {
       throw new NotFoundException('Location topilmadi');
@@ -343,7 +343,7 @@ export class ScheduleService {
       location: attendanceLocationData,
       locationId: new Types.ObjectId(locationData.id),
       locationName: locationData.name,
-      fingerprintNumber: fingerNumber,
+      fingerprintNumber: fingerprintId,
       device,
       notes,
       ...(snapshotData
@@ -371,7 +371,7 @@ export class ScheduleService {
       device: savedAttendance.device,
       notes: savedAttendance.notes,
       hasWarning: savedAttendance.hasWarning,
-      fingerNumber: fingerNumber,
+      fingerNumber: fingerprintId,
       ...(snapshotData
         ? {
             image: snapshotData.image,
@@ -928,5 +928,115 @@ export class ScheduleService {
     // Bu metod PDF export uchun ma'lumotlarni tayyorlaydi
     // Haqiqiy PDF fayl yaratish uchun puppeteer yoki boshqa kutubxona kerak bo'ladi
     return this.exportAttendanceToExcel(filter);
+  }
+
+  // Yetishmayotgan method lar
+  async fingerCheckInOut(fingerAttendanceDto: FingerAttendanceDto) {
+    const { fingerprintId, type, location, locationName, device, notes } =
+      fingerAttendanceDto;
+
+    // Barmoq izi orqali xodimni topish
+    const fingerprint = await this.fingerprintModel.findOne({ fingerprintId });
+    if (!fingerprint) {
+      throw new NotFoundException('Barmoq izi topilmadi');
+    }
+
+    const employee = await this.employeeModel.findById(fingerprint.employeeId);
+    if (!employee) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+
+    if (type === 'checkin') {
+      return this.checkIn({
+        employeeId: (employee._id as Types.ObjectId).toString(),
+        type: AttendanceType.IN,
+        location,
+        locationName,
+        device,
+        notes,
+      });
+    } else {
+      return this.checkOut({
+        employeeId: (employee._id as Types.ObjectId).toString(),
+        type: AttendanceType.OUT,
+        location,
+        locationName,
+        device,
+        notes,
+      });
+    }
+  }
+
+  async updateAttendance(id: string, updateData: Partial<CheckInDto>) {
+    const attendance = await this.attendanceModel.findById(id);
+    if (!attendance) {
+      throw new NotFoundException('Davomat topilmadi');
+    }
+
+    const updatedAttendance = await this.attendanceModel.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true },
+    );
+
+    return updatedAttendance;
+  }
+
+  async deleteAttendance(id: string) {
+    const attendance = await this.attendanceModel.findById(id);
+    if (!attendance) {
+      throw new NotFoundException('Davomat topilmadi');
+    }
+
+    await this.attendanceModel.findByIdAndDelete(id);
+    return { message: "Davomat o'chirildi" };
+  }
+
+  async getDashboardSummary(date?: string) {
+    const targetDate = date ? new Date(date) : new Date();
+    const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+    const summary = await this.attendanceModel.aggregate([
+      {
+        $match: {
+          timestamp: { $gte: startOfDay, $lte: endOfDay },
+        },
+      },
+      {
+        $group: {
+          _id: '$employeeId',
+          totalLogs: { $sum: 1 },
+          checkIns: {
+            $sum: { $cond: [{ $eq: ['$type', 'IN'] }, 1, 0] },
+          },
+          checkOuts: {
+            $sum: { $cond: [{ $eq: ['$type', 'OUT'] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    return {
+      date: targetDate.toISOString().split('T')[0],
+      totalEmployees: summary.length,
+      summary,
+    };
+  }
+
+  async exportExcel(startDate?: string, endDate?: string) {
+    const filter: AttendanceFilterDto = {};
+    if (startDate) filter.startDate = startDate;
+    if (endDate) filter.endDate = endDate;
+
+    return this.exportAttendanceToExcel(filter);
+  }
+
+  async exportPdf(startDate?: string, endDate?: string) {
+    const filter: AttendanceFilterDto = {};
+    if (startDate) filter.startDate = startDate;
+    if (endDate) filter.endDate = endDate;
+
+    return this.exportAttendanceToPDF(filter);
   }
 }

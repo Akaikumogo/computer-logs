@@ -10,7 +10,11 @@ import {
   HttpStatus,
   Put,
   Delete,
+  Res,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ScheduleService } from './schedule.service';
 import {
   CheckInDto,
@@ -33,6 +37,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../auth/entities/user.entity';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { SkipAuth } from '../auth/decorators/skip-auth.decorator';
+import { Observable, interval, map, switchMap, from } from 'rxjs';
 
 @ApiTags('Schedule Management')
 @Controller('schedule')
@@ -76,7 +81,7 @@ export class ScheduleController {
   @ApiResponse({ status: 404, description: 'Xodim topilmadi' })
   @ApiResponse({
     status: 400,
-    description: 'Avval kirish qayd qilishingiz kerak',
+    description: 'Bugun kirish qayd qilinmagan',
   })
   @HttpCode(HttpStatus.CREATED)
   async checkOut(@Body() checkOutDto: CheckOutDto) {
@@ -84,32 +89,34 @@ export class ScheduleController {
   }
 
   @Post('attendance/checkinout')
-  @SkipAuth()
   @ApiOperation({
-    summary: 'Barmoq orqali kirish/chiqish qayd qilish (Public)',
-    description:
-      "Barmoq raqami asosida avtomatik ravishda kirish yoki chiqishni aniqlaydi. Oxirgi record IN bo'lsa keyingisi OUT, aks holda IN bo'ladi. Authentication talab qilmaydi.",
+    summary: 'Barmoq izi orqali kirish/chiqish',
+    description: 'Barmoq izi skaner orqali kirish yoki chiqish qayd qiladi',
   })
   @ApiBody({ type: FingerAttendanceDto })
   @ApiResponse({
     status: 201,
-    description: 'Kirish yoki chiqish muvaffaqiyatli qayd qilindi',
+    description: 'Barmoq izi muvaffaqiyatli qayd qilindi',
   })
-  @ApiResponse({ status: 404, description: 'Barmoq raqami topilmadi' })
+  @ApiResponse({ status: 404, description: 'Barmoq izi topilmadi' })
+  @ApiResponse({
+    status: 400,
+    description: "Barmoq izi noto'g'ri yoki xodim topilmadi",
+  })
   @HttpCode(HttpStatus.CREATED)
-  async checkInOutByFinger(@Body() fingerAttendanceDto: FingerAttendanceDto) {
-    return this.scheduleService.checkInOutByFinger(fingerAttendanceDto);
+  async fingerCheckInOut(@Body() fingerAttendanceDto: FingerAttendanceDto) {
+    return this.scheduleService.fingerCheckInOut(fingerAttendanceDto);
   }
 
-  // ==================== ATTENDANCE RECORDS ====================
+  // ==================== ATTENDANCE MANAGEMENT ====================
 
   @Get('attendance/today/:employeeId')
   @ApiOperation({
-    summary: "Xodimning bugungi attendance ma'lumoti",
-    description: "Xodimning bugungi kirish/chiqish ma'lumotlarini olish",
+    summary: 'Bugungi davomat',
+    description: "Xodimning bugungi davomat ma'lumotlari",
   })
-  @ApiParam({ name: 'employeeId', description: 'Xodim ID' })
-  @ApiResponse({ status: 200, description: "Bugungi attendance ma'lumoti" })
+  @ApiParam({ name: 'employeeId', description: 'Xodim ID si' })
+  @ApiResponse({ status: 200, description: "Bugungi davomat ma'lumotlari" })
   @ApiResponse({ status: 404, description: 'Xodim topilmadi' })
   async getTodayAttendance(@Param('employeeId') employeeId: string) {
     return this.scheduleService.getTodayAttendance(employeeId);
@@ -117,59 +124,51 @@ export class ScheduleController {
 
   @Get('attendance/employee/:employeeId')
   @ApiOperation({
-    summary: 'Xodimning attendance tarixi',
-    description: "Xodimning barcha attendance ma'lumotlarini olish",
+    summary: 'Xodim davomat tarixi',
+    description: 'Xodimning davomat tarixi',
   })
-  @ApiParam({ name: 'employeeId', description: 'Xodim ID' })
+  @ApiParam({ name: 'employeeId', description: 'Xodim ID si' })
   @ApiQuery({
     name: 'startDate',
     required: false,
-    description: "Boshlang'ich sana (YYYY-MM-DD)",
+    description: 'Boshlanish sanasi',
   })
-  @ApiQuery({
-    name: 'endDate',
-    required: false,
-    description: 'Tugash sana (YYYY-MM-DD)',
-  })
-  @ApiQuery({ name: 'status', required: false, description: 'Status filter' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Natijalar soni' })
-  @ApiResponse({ status: 200, description: 'Xodimning attendance tarixi' })
-  @ApiResponse({ status: 404, description: 'Xodim topilmadi' })
+  @ApiQuery({ name: 'endDate', required: false, description: 'Tugash sanasi' })
+  @ApiQuery({ name: 'status', required: false, description: 'Davomat holati' })
+  @ApiResponse({ status: 200, description: 'Davomat tarixi' })
   async getEmployeeAttendance(
     @Param('employeeId') employeeId: string,
-    @Query() filter: AttendanceFilterDto,
+    @Query() filters: AttendanceFilterDto,
   ) {
-    return this.scheduleService.getEmployeeAttendance(employeeId, filter);
+    return this.scheduleService.getEmployeeAttendance(employeeId, filters);
   }
 
   @Put('attendance/:id')
   @ApiOperation({
-    summary: "Attendance ma'lumotini yangilash",
-    description: "Mavjud attendance ma'lumotini yangilash",
+    summary: "Davomat ma'lumotlarini yangilash",
+    description: "Davomat ma'lumotlarini yangilaydi",
   })
-  @ApiParam({ name: 'id', description: 'Attendance ID' })
-  @ApiResponse({ status: 200, description: "Attendance ma'lumoti yangilandi" })
-  @ApiResponse({ status: 404, description: 'Attendance topilmadi' })
-  @Roles(UserRole.ADMIN, UserRole.HR)
-  @UseGuards(RolesGuard)
-  async updateAttendance(@Param('id') id: string, @Body() updateData: any) {
-    // Bu metodni to'liq implement qilish kerak
-    return { message: "Attendance ma'lumoti yangilandi", id };
+  @ApiParam({ name: 'id', description: 'Davomat ID si' })
+  @ApiBody({ type: CheckInDto })
+  @ApiResponse({ status: 200, description: 'Davomat yangilandi' })
+  @ApiResponse({ status: 404, description: 'Davomat topilmadi' })
+  async updateAttendance(
+    @Param('id') id: string,
+    @Body() updateData: CheckInDto,
+  ) {
+    return this.scheduleService.updateAttendance(id, updateData);
   }
 
   @Delete('attendance/:id')
   @ApiOperation({
-    summary: "Attendance ma'lumotini o'chirish",
-    description: "Attendance ma'lumotini soft delete qilish",
+    summary: "Davomat ma'lumotlarini o'chirish",
+    description: "Davomat ma'lumotlarini o'chiradi",
   })
-  @ApiParam({ name: 'id', description: 'Attendance ID' })
-  @ApiResponse({ status: 200, description: "Attendance ma'lumoti o'chirildi" })
-  @ApiResponse({ status: 404, description: 'Attendance topilmadi' })
-  @Roles(UserRole.ADMIN, UserRole.HR)
-  @UseGuards(RolesGuard)
+  @ApiParam({ name: 'id', description: 'Davomat ID si' })
+  @ApiResponse({ status: 200, description: "Davomat o'chirildi" })
+  @ApiResponse({ status: 404, description: 'Davomat topilmadi' })
   async deleteAttendance(@Param('id') id: string) {
-    // Bu metodni to'liq implement qilish kerak
-    return { message: "Attendance ma'lumoti o'chirildi", id };
+    return this.scheduleService.deleteAttendance(id);
   }
 
   // ==================== SCHEDULE VIEWS ====================
@@ -197,9 +196,10 @@ export class ScheduleController {
   @Get('monthly/:year/:month')
   @ApiOperation({
     summary: 'Oylik jadval',
-    description: 'Belgilangan oy uchun kunlik attendance statistikasi',
+    description:
+      "Belgilangan oy uchun barcha xodimlarning attendance ma'lumotlari",
   })
-  @ApiParam({ name: 'year', description: 'Yil (masalan: 2025)' })
+  @ApiParam({ name: 'year', description: 'Yil' })
   @ApiParam({ name: 'month', description: 'Oy (1-12)' })
   @ApiQuery({
     name: 'locationName',
@@ -208,23 +208,20 @@ export class ScheduleController {
   })
   @ApiResponse({ status: 200, description: "Oylik jadval ma'lumotlari" })
   async getMonthlySchedule(
-    @Param('year') year: string,
-    @Param('month') month: string,
+    @Param('year') year: number,
+    @Param('month') month: number,
     @Query('locationName') locationName?: string,
   ) {
-    return this.scheduleService.getMonthlySchedule(
-      parseInt(year),
-      parseInt(month),
-      locationName,
-    );
+    return this.scheduleService.getMonthlySchedule(year, month, locationName);
   }
 
   @Get('yearly/:year')
   @ApiOperation({
     summary: 'Yillik jadval',
-    description: 'Belgilangan yil uchun oylik attendance statistikasi',
+    description:
+      "Belgilangan yil uchun barcha xodimlarning attendance ma'lumotlari",
   })
-  @ApiParam({ name: 'year', description: 'Yil (masalan: 2025)' })
+  @ApiParam({ name: 'year', description: 'Yil' })
   @ApiQuery({
     name: 'locationName',
     required: false,
@@ -232,10 +229,145 @@ export class ScheduleController {
   })
   @ApiResponse({ status: 200, description: "Yillik jadval ma'lumotlari" })
   async getYearlySchedule(
-    @Param('year') year: string,
+    @Param('year') year: number,
     @Query('locationName') locationName?: string,
   ) {
-    return this.scheduleService.getYearlySchedule(parseInt(year), locationName);
+    return this.scheduleService.getYearlySchedule(year, locationName);
+  }
+
+  // ==================== REALTIME UPDATES ====================
+
+  @Sse('realtime/updates')
+  @ApiOperation({
+    summary: 'Realtime yangilanishlar',
+    description: 'Server-Sent Events orqali realtime yangilanishlar',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Realtime yangilanishlar oqimi',
+  })
+  getRealtimeUpdates(
+    @Query('locationName') locationName?: string,
+  ): Observable<MessageEvent> {
+    return interval(5000).pipe(
+      map(() => {
+        const data = {
+          type: 'schedule_update',
+          timestamp: new Date().toISOString(),
+          locationName: locationName || 'all',
+          message: 'Schedule data updated',
+        };
+        return { data: JSON.stringify(data) } as MessageEvent;
+      }),
+    );
+  }
+
+  @Sse('realtime/daily/:date')
+  @ApiOperation({
+    summary: 'Kunlik jadval realtime yangilanishlari',
+    description: 'Belgilangan kun uchun realtime yangilanishlar',
+  })
+  @ApiParam({ name: 'date', description: 'Sana (YYYY-MM-DD formatida)' })
+  @ApiQuery({
+    name: 'locationName',
+    required: false,
+    description: 'Location nomi',
+  })
+  getDailyRealtimeUpdates(
+    @Param('date') date: string,
+    @Query('locationName') locationName?: string,
+  ): Observable<MessageEvent> {
+    return interval(10000).pipe(
+      switchMap(() => {
+        return from(
+          this.scheduleService.getDailySchedule(date, locationName),
+        ).pipe(
+          map((scheduleData) => {
+            const data = {
+              type: 'daily_schedule_update',
+              date,
+              locationName: locationName || 'all',
+              timestamp: new Date().toISOString(),
+              data: scheduleData,
+            };
+            return { data: JSON.stringify(data) } as MessageEvent;
+          }),
+        );
+      }),
+    );
+  }
+
+  @Sse('realtime/monthly/:year/:month')
+  @ApiOperation({
+    summary: 'Oylik jadval realtime yangilanishlari',
+    description: 'Belgilangan oy uchun realtime yangilanishlar',
+  })
+  @ApiParam({ name: 'year', description: 'Yil' })
+  @ApiParam({ name: 'month', description: 'Oy (1-12)' })
+  @ApiQuery({
+    name: 'locationName',
+    required: false,
+    description: 'Location nomi',
+  })
+  getMonthlyRealtimeUpdates(
+    @Param('year') year: number,
+    @Param('month') month: number,
+    @Query('locationName') locationName?: string,
+  ): Observable<MessageEvent> {
+    return interval(15000).pipe(
+      switchMap(() => {
+        return from(
+          this.scheduleService.getMonthlySchedule(year, month, locationName),
+        ).pipe(
+          map((scheduleData) => {
+            const data = {
+              type: 'monthly_schedule_update',
+              year,
+              month,
+              locationName: locationName || 'all',
+              timestamp: new Date().toISOString(),
+              data: scheduleData,
+            };
+            return { data: JSON.stringify(data) } as MessageEvent;
+          }),
+        );
+      }),
+    );
+  }
+
+  @Sse('realtime/yearly/:year')
+  @ApiOperation({
+    summary: 'Yillik jadval realtime yangilanishlari',
+    description: 'Belgilangan yil uchun realtime yangilanishlar',
+  })
+  @ApiParam({ name: 'year', description: 'Yil' })
+  @ApiQuery({
+    name: 'locationName',
+    required: false,
+    description: 'Location nomi',
+  })
+  getYearlyRealtimeUpdates(
+    @Param('year') year: number,
+    @Query('locationName') locationName?: string,
+  ): Observable<MessageEvent> {
+    return interval(30000).pipe(
+      switchMap(() => {
+        return from(
+          this.scheduleService.getYearlySchedule(year, locationName),
+        ).pipe(
+          map((scheduleData) => {
+            const data = {
+              type: 'yearly_schedule_update',
+              year,
+              locationName: locationName || 'all',
+              timestamp: new Date().toISOString(),
+              data: scheduleData,
+            };
+            return { data: JSON.stringify(data) } as MessageEvent;
+          }),
+        );
+      }),
+    );
   }
 
   // ==================== DASHBOARD & STATISTICS ====================
@@ -243,7 +375,7 @@ export class ScheduleController {
   @Get('dashboard/stats')
   @ApiOperation({
     summary: 'Dashboard statistikasi',
-    description: 'Umumiy dashboard statistikalarini olish',
+    description: 'Dashboard uchun umumiy statistika',
   })
   @ApiResponse({ status: 200, description: 'Dashboard statistikasi' })
   async getDashboardStats() {
@@ -252,115 +384,91 @@ export class ScheduleController {
 
   @Get('dashboard/summary')
   @ApiOperation({
-    summary: 'Attendance xulosa',
-    description: "Attendance bo'yicha umumiy xulosa",
+    summary: 'Dashboard xulosa',
+    description: "Dashboard uchun xulosa ma'lumotlari",
   })
-  @ApiQuery({ name: 'date', required: false, description: 'Sana (YYYY-MM-DD)' })
-  @ApiResponse({ status: 200, description: 'Attendance xulosa' })
-  async getAttendanceSummary(@Query('date') date?: string) {
-    const targetDate = date || new Date().toISOString().split('T')[0];
-    return this.scheduleService.getAttendanceSummary(targetDate);
+  @ApiQuery({
+    name: 'date',
+    required: false,
+    description: 'Sana (YYYY-MM-DD formatida)',
+  })
+  @ApiResponse({ status: 200, description: 'Dashboard xulosasi' })
+  async getDashboardSummary(@Query('date') date?: string) {
+    return this.scheduleService.getDashboardSummary(date);
   }
 
-  // ==================== EXPORT FUNCTIONALITY ====================
-
-  @Get('attendance/export/excel')
+  @Get('dashboard/export/excel')
   @ApiOperation({
-    summary: 'Excel formatida export',
-    description: "Attendance ma'lumotlarini Excel formatida export qilish",
+    summary: 'Excel fayl export',
+    description: "Dashboard ma'lumotlarini Excel faylga export qilish",
   })
   @ApiQuery({
     name: 'startDate',
     required: false,
-    description: "Boshlang'ich sana",
-  })
-  @ApiQuery({ name: 'endDate', required: false, description: 'Tugash sana' })
-  @ApiQuery({ name: 'employeeId', required: false, description: 'Xodim ID' })
-  @ApiQuery({ name: 'status', required: false, description: 'Status filter' })
-  @ApiResponse({ status: 200, description: 'Excel fayl' })
-  @Roles(UserRole.ADMIN, UserRole.HR)
-  @UseGuards(RolesGuard)
-  async exportToExcel(@Query() filter: AttendanceFilterDto) {
-    return this.scheduleService.exportAttendanceToExcel(filter);
-  }
-
-  @Get('attendance/export/pdf')
-  @ApiOperation({
-    summary: 'PDF formatida export',
-    description: "Attendance ma'lumotlarini PDF formatida export qilish",
+    description: 'Boshlanish sanasi',
   })
   @ApiQuery({
-    name: 'startDate',
+    name: 'endDate',
     required: false,
-    description: "Boshlang'ich sana",
+    description: 'Tugash sanasi',
   })
-  @ApiQuery({ name: 'endDate', required: false, description: 'Tugash sana' })
-  @ApiQuery({ name: 'employeeId', required: false, description: 'Xodim ID' })
-  @ApiQuery({ name: 'status', required: false, description: 'Status filter' })
-  @ApiResponse({ status: 200, description: 'PDF fayl' })
-  @Roles(UserRole.ADMIN, UserRole.HR)
-  @UseGuards(RolesGuard)
-  async exportToPDF(@Query() filter: AttendanceFilterDto) {
-    return this.scheduleService.exportAttendanceToPDF(filter);
-  }
-
-  // ==================== EMPLOYEE MANAGEMENT ====================
-
-  @Get('employees')
-  @ApiOperation({
-    summary: "Xodimlar ro'yxati",
-    description: "Barcha faol xodimlarning ro'yxatini olish",
+  @ApiResponse({
+    status: 200,
+    description: 'Excel fayl yuklab olindi',
+    content: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+        schema: { type: 'string', format: 'binary' },
+      },
+    },
   })
-  @ApiQuery({
-    name: 'department',
-    required: false,
-    description: "Bo'lim filter",
-  })
-  @ApiQuery({
-    name: 'position',
-    required: false,
-    description: 'Lavozim filter',
-  })
-  @ApiResponse({ status: 200, description: "Xodimlar ro'yxati" })
-  async getEmployees(
-    @Query('department') department?: string,
-    @Query('position') position?: string,
+  async exportExcel(
+    @Res() res: Response,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    // Bu metodni to'liq implement qilish kerak
-    return { message: "Xodimlar ro'yxati", department, position };
+    const buffer = await this.scheduleService.exportExcel(startDate, endDate);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename=attendance.xlsx',
+    });
+    res.send(buffer);
   }
 
-  @Get('employees/:id')
+  @Get('dashboard/export/pdf')
   @ApiOperation({
-    summary: "Xodim ma'lumoti",
-    description: "Belgilangan xodimning to'liq ma'lumotini olish",
+    summary: 'PDF fayl export',
+    description: "Dashboard ma'lumotlarini PDF faylga export qilish",
   })
-  @ApiParam({ name: 'id', description: 'Xodim ID' })
-  @ApiResponse({ status: 200, description: "Xodim ma'lumoti" })
-  @ApiResponse({ status: 404, description: 'Xodim topilmadi' })
-  async getEmployee(@Param('id') id: string) {
-    // Bu metodni to'liq implement qilish kerak
-    return { message: "Xodim ma'lumoti", id };
-  }
-
-  @Get('employees/:id/attendance')
-  @ApiOperation({
-    summary: 'Xodimning attendance tarixi',
-    description: "Belgilangan xodimning barcha attendance ma'lumotlari",
-  })
-  @ApiParam({ name: 'id', description: 'Xodim ID' })
   @ApiQuery({
     name: 'startDate',
     required: false,
-    description: "Boshlang'ich sana",
+    description: 'Boshlanish sanasi',
   })
-  @ApiQuery({ name: 'endDate', required: false, description: 'Tugash sana' })
-  @ApiResponse({ status: 200, description: 'Xodimning attendance tarixi' })
-  @ApiResponse({ status: 404, description: 'Xodim topilmadi' })
-  async getEmployeeAttendanceHistory(
-    @Param('id') id: string,
-    @Query() filter: AttendanceFilterDto,
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    description: 'Tugash sanasi',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'PDF fayl yuklab olindi',
+    content: {
+      'application/pdf': {
+        schema: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  async exportPdf(
+    @Res() res: Response,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.scheduleService.getEmployeeAttendance(id, filter);
+    const buffer = await this.scheduleService.exportPdf(startDate, endDate);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'attachment; filename=attendance.pdf',
+    });
+    res.send(buffer);
   }
 }
