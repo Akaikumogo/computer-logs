@@ -235,12 +235,14 @@ export class ScheduleService {
     }
 
     // Barmoq raqami va location orqali xodimni topish
-    const employee = await this.employeeModel.findOne({ 
+    const employee = await this.employeeModel.findOne({
       fingerNumber,
-      primaryLocationId: locationData.id
+      primaryLocationId: locationData.id,
     });
     if (!employee) {
-      throw new NotFoundException('Barmoq raqami topilmadi yoki bu location ga biriktirilmagan');
+      throw new NotFoundException(
+        'Barmoq raqami topilmadi yoki bu location ga biriktirilmagan',
+      );
     }
 
     // Oxirgi davomat yozuvini tekshirish
@@ -831,40 +833,204 @@ export class ScheduleService {
     }
 
     // Barmoq raqami va location orqali xodimni topish
-    const employee = await this.employeeModel.findOne({ 
+    const employee = await this.employeeModel.findOne({
       fingerNumber,
-      primaryLocationId: locationData.id
+      primaryLocationId: locationData.id,
     });
     if (!employee) {
-      throw new NotFoundException('Barmoq raqami topilmadi yoki bu location ga biriktirilmagan');
+      throw new NotFoundException(
+        'Barmoq raqami topilmadi yoki bu location ga biriktirilmagan',
+      );
     }
 
-    // Oxirgi davomat yozuvini tekshirish
-    const lastAttendance = await this.attendanceModel
-      .findOne({ employeeId: employee._id })
+    // Bugungi kundagi oxirgi davomat yozuvini tekshirish
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const lastTodayAttendance = await this.attendanceModel
+      .findOne({
+        employeeId: employee._id,
+        timestamp: {
+          $gte: today,
+          $lt: tomorrow,
+        },
+      })
       .sort({ timestamp: -1 });
 
-    const isLastCheckIn = lastAttendance?.type === AttendanceType.IN;
-
-    if (isLastCheckIn) {
-      // Oxirgi yozuv IN bo'lsa, hozir OUT qilamiz
-      return this.checkOut({
-        employeeId: (employee._id as Types.ObjectId).toString(),
-        type: AttendanceType.OUT,
-        locationName: location,
-        device,
-        notes,
-      });
+    if (lastTodayAttendance) {
+      // Bugun allaqachon davomat qayd qilingan
+      if (lastTodayAttendance.type === AttendanceType.IN) {
+        // Oxirgi davomat IN bo'lsa, hozir OUT qilamiz
+        return this.fingerCheckOut({
+          employeeId: (employee._id as Types.ObjectId).toString(),
+          locationName: location,
+          device,
+          notes,
+        });
+      } else {
+        // Oxirgi davomat OUT bo'lsa, hozir IN qilamiz
+        return this.fingerCheckIn({
+          employeeId: (employee._id as Types.ObjectId).toString(),
+          locationName: location,
+          device,
+          notes,
+        });
+      }
     } else {
-      // Aks holda IN qilamiz
-      return this.checkIn({
+      // Bugun hali davomat qayd qilinmagan, kirish qilamiz
+      return this.fingerCheckIn({
         employeeId: (employee._id as Types.ObjectId).toString(),
-        type: AttendanceType.IN,
         locationName: location,
         device,
         notes,
       });
     }
+  }
+
+  // Fingerprint uchun maxsus checkIn metodi (bugungi kundagi tekshiruvsiz)
+  private async fingerCheckIn(data: {
+    employeeId: string;
+    locationName: string;
+    device?: string;
+    notes?: string;
+  }) {
+    const { employeeId, locationName, device, notes } = data;
+
+    // Validate location name
+    const locationData = await this.locationService.getLocationByName(
+      locationName || 'default',
+    );
+
+    // Create location data for attendance record
+    const attendanceLocationData = {
+      latitude: locationData.latitude,
+      longitude: locationData.longitude,
+      address: locationData.address,
+      accuracy: 100, // Default accuracy
+    };
+
+    // Xodimni topish
+    const employee = await this.employeeModel.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+
+    // Status aniqlash (8:00 dan keyin = late)
+    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const workStartTime = new Date(today);
+    workStartTime.setHours(8, 0, 0, 0);
+
+    let status = AttendanceStatus.NORMAL;
+    if (now > workStartTime) {
+      status = AttendanceStatus.LATE;
+    }
+
+    // Yangi attendance yaratish
+    const attendance = new this.attendanceModel({
+      employeeId: new Types.ObjectId(employeeId),
+      timestamp: now,
+      type: AttendanceType.IN,
+      status,
+      location: attendanceLocationData,
+      device,
+      notes,
+    });
+
+    const savedAttendance = await attendance.save();
+
+    this.logger.log(
+      `Xodim ${employee.fullName} kirish qayd qildi - ${status} status bilan`,
+    );
+
+    return {
+      id: savedAttendance._id?.toString(),
+      employeeId: savedAttendance.employeeId?.toString(),
+      employeeName: employee.fullName,
+      timestamp: savedAttendance.timestamp,
+      type: savedAttendance.type,
+      status: savedAttendance.status,
+      location: savedAttendance.location,
+      device: savedAttendance.device,
+      notes: savedAttendance.notes,
+      hasWarning: status === AttendanceStatus.LATE,
+    };
+  }
+
+  // Fingerprint uchun maxsus checkOut metodi (bugungi kundagi tekshiruvsiz)
+  private async fingerCheckOut(data: {
+    employeeId: string;
+    locationName: string;
+    device?: string;
+    notes?: string;
+  }) {
+    const { employeeId, locationName, device, notes } = data;
+
+    // Validate location name
+    const locationData = await this.locationService.getLocationByName(
+      locationName || 'default',
+    );
+
+    // Create location data for attendance record
+    const attendanceLocationData = {
+      latitude: locationData.latitude,
+      longitude: locationData.longitude,
+      address: locationData.address,
+      accuracy: 100, // Default accuracy
+    };
+
+    // Xodimni topish
+    const employee = await this.employeeModel.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+
+    // Status aniqlash (17:00 dan oldin = early)
+    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const workEndTime = new Date(today);
+    workEndTime.setHours(17, 0, 0, 0);
+
+    let status = AttendanceStatus.NORMAL;
+    if (now < workEndTime) {
+      status = AttendanceStatus.EARLY;
+    }
+
+    // Yangi attendance yaratish
+    const attendance = new this.attendanceModel({
+      employeeId: new Types.ObjectId(employeeId),
+      timestamp: now,
+      type: AttendanceType.OUT,
+      status,
+      location: attendanceLocationData,
+      device,
+      notes,
+    });
+
+    const savedAttendance = await attendance.save();
+
+    this.logger.log(
+      `Xodim ${employee.fullName} chiqish qayd qildi - ${status} status bilan`,
+    );
+    //secret
+    return {
+      id: (savedAttendance._id as Types.ObjectId).toString(),
+      employeeId: (
+        savedAttendance.employeeId as unknown as Types.ObjectId
+      ).toString(),
+      employeeName: employee.fullName,
+      timestamp: savedAttendance.timestamp,
+      type: savedAttendance.type,
+      status: savedAttendance.status,
+      location: savedAttendance.location,
+      device: savedAttendance.device,
+      notes: savedAttendance.notes,
+      hasWarning: status === AttendanceStatus.EARLY,
+    };
   }
 
   async updateAttendance(id: string, updateData: Partial<CheckInDto>) {
@@ -940,3 +1106,4 @@ export class ScheduleService {
     return this.exportAttendanceToPDF(filter);
   }
 }
+//secret2

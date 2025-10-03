@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleController } from './schedule.controller';
+import { PublicScheduleController } from './public-schedule.controller';
 import { ScheduleService } from './schedule.service';
 import { SnapshotService } from './snapshot.service';
 import { Attendance, AttendanceSchema } from '../schemas/attendance.schema';
@@ -19,7 +20,7 @@ import { LocationModule } from '../location/location.module';
     AuthModule,
     LocationModule,
   ],
-  controllers: [ScheduleController],
+  controllers: [ScheduleController, PublicScheduleController],
   providers: [ScheduleService, SnapshotService],
   exports: [ScheduleService, SnapshotService],
 })

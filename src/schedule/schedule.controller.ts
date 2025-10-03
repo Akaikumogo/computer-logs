@@ -1,3 +1,4 @@
+/* eslint-disable quotes */
 import {
   Controller,
   Get,
@@ -32,10 +33,7 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/entities/user.entity';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
 import { SkipAuth } from '../auth/decorators/skip-auth.decorator';
 import { Observable, interval, map, switchMap, from } from 'rxjs';
 
@@ -89,9 +87,12 @@ export class ScheduleController {
   }
 
   @Post('attendance/checkinout')
+  @SkipAuth()
+  @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Barmoq izi orqali kirish/chiqish',
-    description: 'Barmoq izi skaner orqali kirish yoki chiqish qayd qiladi',
+    summary: 'Barmoq izi orqali kirish/chiqish (Public)',
+    description:
+      'Barmoq izi skaner orqali kirish yoki chiqish qayd qiladi - autentifikatsiya talab qilinmaydi',
   })
   @ApiBody({ type: FingerAttendanceDto })
   @ApiResponse({
