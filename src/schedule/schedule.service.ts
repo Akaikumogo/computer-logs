@@ -226,159 +226,49 @@ export class ScheduleService {
   }
 
   async checkInOutByFinger(fingerAttendanceDto: FingerAttendanceDto) {
-    const { fingerprintId, location, locationName, device, notes } =
-      fingerAttendanceDto;
-
-    // Barmoq izi orqali xodimni topish
-    const fingerprint = await this.fingerprintModel.findOne({ fingerprintId });
-    if (!fingerprint) {
-      throw new NotFoundException('Barmoq izi topilmadi');
-    }
-
-    const employee = await this.employeeModel.findById(fingerprint.employeeId);
-    if (!employee) {
-      throw new NotFoundException('Xodim topilmadi');
-    }
+    const { fingerNumber, location, device, notes } = fingerAttendanceDto;
 
     // Location ni topish
-    const locationData = await this.locationService.getLocationByName(
-      locationName || 'default',
-    );
-
+    const locationData = await this.locationService.getLocationByName(location);
     if (!locationData) {
       throw new NotFoundException('Location topilmadi');
     }
 
-    // Xodimning location ga biriktirilganligini tekshirish
-    if (employee.primaryLocationId?.toString() !== locationData.id) {
-      throw new BadRequestException('Bu xodim bu location ga biriktirilmagan');
-    }
-
-    // Create location data for attendance record
-    const attendanceLocationData = {
-      latitude: locationData.latitude,
-      longitude: locationData.longitude,
-      address: locationData.address,
-      accuracy: 100, // Default accuracy
-    };
-
-    // Bugungi attendance recordlarini olish
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const todayAttendances = await this.attendanceModel
-      .find({
-        employeeId: new Types.ObjectId(
-          (employee._id as Types.ObjectId).toString(),
-        ),
-        timestamp: { $gte: today, $lt: tomorrow },
-        isDeleted: false,
-      })
-      .sort({ timestamp: 1 });
-
-    // Qaysi turda ekanligini aniqlash
-    let type: AttendanceType;
-    let status: AttendanceStatus = AttendanceStatus.NORMAL;
-
-    if (todayAttendances.length === 0) {
-      // Birinchi marta - Kirish
-      type = AttendanceType.IN;
-
-      // Kechikish tekshirish (9:00 dan keyin)
-      const now = new Date();
-      const workStartTime = new Date(today);
-      workStartTime.setHours(9, 0, 0, 0);
-
-      if (now > workStartTime) {
-        status = AttendanceStatus.LATE;
-      }
-    } else {
-      // Keyingi martalar - Kirish va Chiqish almashadi
-      const lastAttendance = todayAttendances[todayAttendances.length - 1];
-      type =
-        lastAttendance.type === AttendanceType.IN
-          ? AttendanceType.OUT
-          : AttendanceType.IN;
-
-      // Chiqish bo'lsa vaqt tekshirish
-      if (type === AttendanceType.OUT) {
-        const now = new Date();
-        const workEndTime = new Date(today);
-        workEndTime.setHours(18, 0, 0, 0);
-
-        if (now < workEndTime) {
-          status = AttendanceStatus.EARLY;
-        } else if (now > workEndTime) {
-          status = AttendanceStatus.OVERTIME;
-        }
-      }
-    }
-
-    // Snapshot olish (agar mavjud bo'lsa)
-    let snapshotData: { image: string; imageUrl: string } | null = null;
-    try {
-      const snapshot = await this.snapshotService.getCurrentSnapshot(109); // Default channel 109
-      if (snapshot.success) {
-        snapshotData = {
-          image: snapshot.data.filename,
-          imageUrl: snapshot.data.full_url,
-        };
-        this.logger.log(`Snapshot olingan: ${snapshot.data.filename}`);
-      }
-    } catch (snapshotError) {
-      this.logger.warn(`Snapshot olishda xatolik: ${snapshotError.message}`);
-      // Snapshot olishda xatolik bo'lsa ham attendance yaratamiz
-    }
-
-    // Yangi attendance yaratish
-    const attendance = new this.attendanceModel({
-      employeeId: new Types.ObjectId(
-        (employee._id as Types.ObjectId).toString(),
-      ),
-      timestamp: new Date(),
-      type,
-      status,
-      location: attendanceLocationData,
-      locationId: new Types.ObjectId(locationData.id),
-      locationName: locationData.name,
-      fingerprintNumber: fingerprintId,
-      device,
-      notes,
-      ...(snapshotData
-        ? {
-            image: snapshotData.image,
-            imageUrl: snapshotData.imageUrl,
-          }
-        : {}),
+    // Barmoq raqami va location orqali xodimni topish
+    const employee = await this.employeeModel.findOne({ 
+      fingerNumber,
+      primaryLocationId: locationData.id
     });
+    if (!employee) {
+      throw new NotFoundException('Barmoq raqami topilmadi yoki bu location ga biriktirilmagan');
+    }
 
-    const savedAttendance = await attendance.save();
+    // Oxirgi davomat yozuvini tekshirish
+    const lastAttendance = await this.attendanceModel
+      .findOne({ employeeId: employee._id })
+      .sort({ timestamp: -1 });
 
-    this.logger.log(
-      `Xodim ${employee.fullName} barmoq orqali ${type === AttendanceType.IN ? 'kirdi' : 'chiqdi'} - ${status} status bilan`,
-    );
+    const isLastCheckIn = lastAttendance?.type === AttendanceType.IN;
 
-    return {
-      id: savedAttendance._id,
-      employeeId: savedAttendance.employeeId,
-      employeeName: employee.fullName,
-      timestamp: savedAttendance.timestamp,
-      type: savedAttendance.type,
-      status: savedAttendance.status,
-      location: attendanceLocationData,
-      device: savedAttendance.device,
-      notes: savedAttendance.notes,
-      hasWarning: savedAttendance.hasWarning,
-      fingerNumber: fingerprintId,
-      ...(snapshotData
-        ? {
-            image: snapshotData.image,
-            imageUrl: snapshotData.imageUrl,
-          }
-        : {}),
-    };
+    if (isLastCheckIn) {
+      // Oxirgi yozuv IN bo'lsa, hozir OUT qilamiz
+      return this.checkOut({
+        employeeId: (employee._id as Types.ObjectId).toString(),
+        type: AttendanceType.OUT,
+        locationName: location,
+        device,
+        notes,
+      });
+    } else {
+      // Aks holda IN qilamiz
+      return this.checkIn({
+        employeeId: (employee._id as Types.ObjectId).toString(),
+        type: AttendanceType.IN,
+        locationName: location,
+        device,
+        notes,
+      });
+    }
   }
 
   // ==================== ATTENDANCE RECORDS ====================
@@ -932,35 +822,45 @@ export class ScheduleService {
 
   // Yetishmayotgan method lar
   async fingerCheckInOut(fingerAttendanceDto: FingerAttendanceDto) {
-    const { fingerprintId, type, location, locationName, device, notes } =
-      fingerAttendanceDto;
+    const { fingerNumber, location, device, notes } = fingerAttendanceDto;
 
-    // Barmoq izi orqali xodimni topish
-    const fingerprint = await this.fingerprintModel.findOne({ fingerprintId });
-    if (!fingerprint) {
-      throw new NotFoundException('Barmoq izi topilmadi');
+    // Location ni topish
+    const locationData = await this.locationService.getLocationByName(location);
+    if (!locationData) {
+      throw new NotFoundException('Location topilmadi');
     }
 
-    const employee = await this.employeeModel.findById(fingerprint.employeeId);
+    // Barmoq raqami va location orqali xodimni topish
+    const employee = await this.employeeModel.findOne({ 
+      fingerNumber,
+      primaryLocationId: locationData.id
+    });
     if (!employee) {
-      throw new NotFoundException('Xodim topilmadi');
+      throw new NotFoundException('Barmoq raqami topilmadi yoki bu location ga biriktirilmagan');
     }
 
-    if (type === 'checkin') {
-      return this.checkIn({
+    // Oxirgi davomat yozuvini tekshirish
+    const lastAttendance = await this.attendanceModel
+      .findOne({ employeeId: employee._id })
+      .sort({ timestamp: -1 });
+
+    const isLastCheckIn = lastAttendance?.type === AttendanceType.IN;
+
+    if (isLastCheckIn) {
+      // Oxirgi yozuv IN bo'lsa, hozir OUT qilamiz
+      return this.checkOut({
         employeeId: (employee._id as Types.ObjectId).toString(),
-        type: AttendanceType.IN,
-        location,
-        locationName,
+        type: AttendanceType.OUT,
+        locationName: location,
         device,
         notes,
       });
     } else {
-      return this.checkOut({
+      // Aks holda IN qilamiz
+      return this.checkIn({
         employeeId: (employee._id as Types.ObjectId).toString(),
-        type: AttendanceType.OUT,
-        location,
-        locationName,
+        type: AttendanceType.IN,
+        locationName: location,
         device,
         notes,
       });

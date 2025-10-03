@@ -138,32 +138,15 @@ export class CheckOutDto {
 }
 
 export class FingerAttendanceDto {
-  @ApiProperty({ description: 'Barmoq izi ID', example: '12345' })
+  @ApiProperty({ description: 'Barmoq raqami', example: '1' })
   @IsString()
   @IsNotEmpty()
-  fingerprintId: string;
+  fingerNumber: string;
 
-  @ApiProperty({ description: 'Turi', enum: ['checkin', 'checkout'] })
+  @ApiProperty({ description: 'Joylashuv nomi', example: 'Boshqarma' })
   @IsString()
   @IsNotEmpty()
-  type: 'checkin' | 'checkout';
-
-  @ApiPropertyOptional({
-    description: "GPS ma'lumotlari",
-    type: LocationDto,
-  })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => LocationDto)
-  location?: LocationDto;
-
-  @ApiPropertyOptional({
-    description: 'Location nomi',
-    example: 'Bosh Ofis',
-  })
-  @IsOptional()
-  @IsString()
-  locationName?: string;
+  location: string;
 
   @ApiPropertyOptional({
     description: "Qurilma ma'lumoti",
