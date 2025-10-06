@@ -35,6 +35,7 @@ import {
   AttendanceFilterDto,
   AttendanceStatus as ScheduleAttendanceStatus,
 } from '../dto/schedule.dto';
+import * as XLSX from 'xlsx';
 
 @Injectable()
 export class ScheduleService {
@@ -820,6 +821,150 @@ export class ScheduleService {
     // Bu metod PDF export uchun ma'lumotlarni tayyorlaydi
     // Haqiqiy PDF fayl yaratish uchun puppeteer yoki boshqa kutubxona kerak bo'ladi
     return this.exportAttendanceToExcel(filter);
+  }
+
+  // ==================== NEW: DAILY/MONTHLY/YEARLY EXCEL EXPORTS ====================
+
+  async exportDailyExcel(date: string): Promise<Buffer> {
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const attendances = await this.attendanceModel
+      .find({ timestamp: { $gte: targetDate, $lt: nextDay }, isDeleted: false })
+      .populate('employeeId')
+      .sort({ timestamp: 1 })
+      .lean();
+
+    // Group by employee
+    const employeeIdToRows: Record<string, any[]> = {};
+    const employeeIdToNames: Record<string, string> = {};
+
+    for (const att of attendances) {
+      const empId =
+        (att.employeeId as any)._id?.toString() ||
+        (att.employeeId as any).toString();
+      const fullName = (att.employeeId as any).fullName || '';
+      employeeIdToNames[empId] = fullName;
+      if (!employeeIdToRows[empId]) employeeIdToRows[empId] = [];
+      employeeIdToRows[empId].push(att);
+    }
+
+    // Build rows with Cyrillic headers
+    const rows: any[] = [];
+    for (const empId of Object.keys(employeeIdToRows)) {
+      const logs = employeeIdToRows[empId];
+      const firstIn = logs.find((l) => l.type === 'IN');
+      const lastOut = [...logs].reverse().find((l) => l.type === 'OUT');
+      const hasWarning = !!firstIn && !lastOut;
+
+      for (const log of logs) {
+        rows.push({
+          ФИО: employeeIdToNames[empId],
+          Дата: new Date(log.timestamp).toISOString().split('T')[0],
+          Время: new Date(log.timestamp).toTimeString().substring(0, 5),
+          Тип: log.type === 'IN' ? 'Вход' : 'Выход',
+          Статус: log.status,
+          Локация: log.location?.address || 'Неизвестно',
+          Устройство: log.device || 'Неизвестно',
+          Примечание: log.notes || '',
+          Предупреждение: hasWarning ? 'Да' : 'Нет',
+        });
+      }
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'День');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return buffer as Buffer;
+  }
+
+  async exportMonthlyExcel(year: number, month: number): Promise<Buffer> {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+
+    // Load active employees once
+    const employees = await this.employeeModel
+      .find({ status: 'active', isDeleted: false })
+      .lean();
+
+    const rows: any[] = [];
+
+    for (const employee of employees) {
+      for (let day = 1; day <= endDate.getDate(); day++) {
+        const d0 = new Date(year, month - 1, day);
+        const d1 = new Date(year, month - 1, day);
+        d0.setHours(0, 0, 0, 0);
+        d1.setHours(23, 59, 59, 999);
+
+        const dayLogs = await this.attendanceModel
+          .find({
+            employeeId: employee._id,
+            timestamp: { $gte: d0, $lte: d1 },
+            isDeleted: false,
+          })
+          .sort({ timestamp: 1 })
+          .lean();
+
+        if (dayLogs.length === 0) {
+          rows.push({
+            ФИО: employee.fullName,
+            Дата: d0.toISOString().split('T')[0],
+            'Первый вход': '',
+            'Последний выход': '',
+            Предупреждение: '',
+          });
+          continue;
+        }
+
+        const firstIn = dayLogs.find((l) => l.type === 'IN');
+        const lastOut = [...dayLogs].reverse().find((l) => l.type === 'OUT');
+        const warning = firstIn && !lastOut ? 'Да' : '';
+
+        rows.push({
+          ФИО: employee.fullName,
+          Дата: d0.toISOString().split('T')[0],
+          'Первый вход': firstIn
+            ? new Date(firstIn.timestamp).toTimeString().substring(0, 5)
+            : '',
+          'Последний выход': lastOut
+            ? new Date(lastOut.timestamp).toTimeString().substring(0, 5)
+            : '',
+          Предупреждение: warning,
+        });
+      }
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Месяц');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return buffer as Buffer;
+  }
+
+  async exportYearlyExcel(year: number): Promise<Buffer> {
+    const rows: any[] = [];
+
+    for (let month = 1; month <= 12; month++) {
+      const summary = await this.getMonthlyAttendanceSummary(year, month);
+      rows.push({
+        Год: year,
+        Месяц: this.getMonthName(month),
+        'Всего сотрудников': summary.totalEmployees,
+        Пришли: summary.present,
+        Опоздали: summary.late,
+        Отсутствовали: summary.absent,
+        'Процент посещаемости': summary.attendanceRate,
+      });
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Год');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return buffer as Buffer;
   }
 
   // Yetishmayotgan method lar

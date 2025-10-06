@@ -472,4 +472,92 @@ export class ScheduleController {
     });
     res.send(buffer);
   }
+
+  // ==================== NEW: EXCEL EXPORTS ====================
+
+  @Get('export/daily')
+  @ApiOperation({
+    summary: 'Kunlik Excel export',
+    description:
+      "Kun bo'yicha attendance ma'lumotlarini Excel formatida yuklab olish",
+  })
+  @ApiQuery({ name: 'date', required: true, description: 'Sana (YYYY-MM-DD)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Excel fayl',
+    content: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+        schema: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  async exportDaily(@Res() res: Response, @Query('date') date: string) {
+    const buffer = await this.scheduleService.exportDailyExcel(date);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename=daily_${date}.xlsx`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('export/monthly')
+  @ApiOperation({
+    summary: 'Oylik Excel export',
+    description:
+      "Oy bo'yicha attendance ma'lumotlarini Excel formatida yuklab olish",
+  })
+  @ApiQuery({ name: 'year', required: true, description: 'Yil' })
+  @ApiQuery({ name: 'month', required: true, description: 'Oy (1-12)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Excel fayl',
+    content: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+        schema: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  async exportMonthly(
+    @Res() res: Response,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    const buffer = await this.scheduleService.exportMonthlyExcel(y, m);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename=monthly_${y}-${m}.xlsx`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('export/yearly')
+  @ApiOperation({
+    summary: 'Yillik Excel export',
+    description:
+      "Yil bo'yicha attendance ma'lumotlarini Excel formatida yuklab olish",
+  })
+  @ApiQuery({ name: 'year', required: true, description: 'Yil' })
+  @ApiResponse({
+    status: 200,
+    description: 'Excel fayl',
+    content: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+        schema: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  async exportYearly(@Res() res: Response, @Query('year') year: string) {
+    const y = parseInt(year, 10);
+    const buffer = await this.scheduleService.exportYearlyExcel(y);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename=yearly_${y}.xlsx`,
+    });
+    res.send(buffer);
+  }
 }

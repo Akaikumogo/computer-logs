@@ -12,7 +12,7 @@ export const securityConfig = (configService: ConfigService) => ({
 
   // CORS configuration
   cors: {
-    origin: configService.get('CORS_ORIGIN', 'http://localhost:5173'),
+    origin: configService.get('CORS_ORIGIN', 'http://45.138.158.1515173'),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -25,7 +25,7 @@ export const securityConfig = (configService: ConfigService) => ({
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "https:"],
+        imgSrc: ["'self'", 'data:', 'https:'],
       },
     },
     crossOriginEmbedderPolicy: false,
