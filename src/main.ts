@@ -34,7 +34,7 @@ async function bootstrap() {
   SwaggerModule.setup('akaikumogo/secret/api', app, document);
 
   await app.listen(port);
-  console.log(`🚀 Application is running on: http://45.138.158.151${port}`);
-  console.log(`📚 Swagger documentation: http://45.138.158.151${port}/api`);
+  console.log(`🚀 Application is running on: http://localhost:${port}`);
+  console.log(`📚 Swagger documentation: http://localhost:${port}/api`);
 }
 bootstrap();

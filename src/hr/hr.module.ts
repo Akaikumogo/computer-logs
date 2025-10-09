@@ -7,6 +7,7 @@ import { Fingerprint, FingerprintSchema } from '../schemas/fingerprint.schema';
 import { Position, PositionSchema } from '../schemas/position.schema';
 import { Department, DepartmentSchema } from '../schemas/department.schema';
 import { Location, LocationSchema } from '../schemas/location.schema';
+import { Attendance, AttendanceSchema } from '../schemas/attendance.schema';
 import { AuthModule } from '../auth/auth.module';
 import { LocationModule } from '../location/location.module';
 
@@ -18,6 +19,7 @@ import { LocationModule } from '../location/location.module';
       { name: Position.name, schema: PositionSchema },
       { name: Department.name, schema: DepartmentSchema },
       { name: Location.name, schema: LocationSchema },
+      { name: Attendance.name, schema: AttendanceSchema },
     ]),
     AuthModule,
     LocationModule,

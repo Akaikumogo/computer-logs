@@ -855,8 +855,8 @@ export class ScheduleService {
     const rows: any[] = [];
     for (const empId of Object.keys(employeeIdToRows)) {
       const logs = employeeIdToRows[empId];
-      const firstIn = logs.find((l) => l.type === 'IN');
-      const lastOut = [...logs].reverse().find((l) => l.type === 'OUT');
+      const firstIn = logs.find((l) => l.type === 'in');
+      const lastOut = [...logs].reverse().find((l) => l.type === 'out');
       const hasWarning = !!firstIn && !lastOut;
 
       for (const log of logs) {
@@ -864,7 +864,7 @@ export class ScheduleService {
           ФИО: employeeIdToNames[empId],
           Дата: new Date(log.timestamp).toISOString().split('T')[0],
           Время: new Date(log.timestamp).toTimeString().substring(0, 5),
-          Тип: log.type === 'IN' ? 'Вход' : 'Выход',
+          Тип: log.type === 'in' ? 'Вход' : 'Выход',
           Статус: log.status,
           Локация: log.location?.address || 'Неизвестно',
           Устройство: log.device || 'Неизвестно',
@@ -919,8 +919,8 @@ export class ScheduleService {
           continue;
         }
 
-        const firstIn = dayLogs.find((l) => l.type === 'IN');
-        const lastOut = [...dayLogs].reverse().find((l) => l.type === 'OUT');
+        const firstIn = dayLogs.find((l) => l.type === 'in');
+        const lastOut = [...dayLogs].reverse().find((l) => l.type === 'out');
         const warning = firstIn && !lastOut ? 'Да' : '';
 
         rows.push({

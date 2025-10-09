@@ -1608,4 +1608,113 @@ export class HrController {
   removeEmployeeFromLocation(@Param('employeeId') employeeId: string) {
     return this.hrService.removeEmployeeFromLocation(employeeId);
   }
+
+  @Get('monthly-schedule/:year/:month')
+  @ApiOperation({
+    summary: 'Get monthly schedule for all employees',
+    description: 'Retrieve monthly work schedule with work/rest days for all active employees',
+  })
+  @ApiParam({
+    name: 'year',
+    description: 'Year (e.g., 2025)',
+    example: 2025,
+  })
+  @ApiParam({
+    name: 'month',
+    description: 'Month (1-12)',
+    example: 10,
+  })
+  @ApiQuery({
+    name: 'locationId',
+    required: false,
+    description: 'Filter by location ID',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Monthly schedule retrieved successfully',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiBearerAuth()
+  getMonthlySchedule(
+    @Param('year') year: number,
+    @Param('month') month: number,
+    @Query('locationId') locationId?: string,
+  ) {
+    return this.hrService.getMonthlySchedule(year, month, locationId);
+  }
+
+  @Get('employees/:employeeId/attendance/:year/:month')
+  @ApiOperation({
+    summary: 'Get employee daily attendance for a month',
+    description: 'Retrieve daily check-in/check-out times and work hours for an employee',
+  })
+  @ApiParam({
+    name: 'employeeId',
+    description: 'Employee ID',
+  })
+  @ApiParam({
+    name: 'year',
+    description: 'Year (e.g., 2025)',
+    example: 2025,
+  })
+  @ApiParam({
+    name: 'month',
+    description: 'Month (1-12)',
+    example: 10,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Employee attendance retrieved successfully',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiBearerAuth()
+  getEmployeeMonthlyAttendance(
+    @Param('employeeId') employeeId: string,
+    @Param('year') year: number,
+    @Param('month') month: number,
+  ) {
+    return this.hrService.getEmployeeMonthlyAttendance(employeeId, year, month);
+  }
+
+  @Get('employees/:employeeId/attendance/:year/:month/:day')
+  @ApiOperation({
+    summary: 'Get employee daily attendance for a specific day',
+    description: 'Retrieve check-in/check-out times and work hours for a specific day',
+  })
+  @ApiParam({
+    name: 'employeeId',
+    description: 'Employee ID',
+  })
+  @ApiParam({
+    name: 'year',
+    description: 'Year (e.g., 2025)',
+    example: 2025,
+  })
+  @ApiParam({
+    name: 'month',
+    description: 'Month (1-12)',
+    example: 10,
+  })
+  @ApiParam({
+    name: 'day',
+    description: 'Day (1-31)',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Employee daily attendance retrieved successfully',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiBearerAuth()
+  getEmployeeDailyAttendance(
+    @Param('employeeId') employeeId: string,
+    @Param('year') year: number,
+    @Param('month') month: number,
+    @Param('day') day: number,
+  ) {
+    return this.hrService.getEmployeeDailyAttendance(employeeId, year, month, day);
+  }
 }

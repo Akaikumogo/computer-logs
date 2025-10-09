@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
+import { Attendance } from '../schemas/attendance.schema';
 import { Employee } from '../schemas/employee.schema';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
@@ -47,9 +48,18 @@ export class HrService {
     @InjectModel(Position.name) private positionModel: Model<Position>,
     @InjectModel(Department.name) private departmentModel: Model<Department>,
     @InjectModel(Location.name) private locationModel: Model<Location>,
+    @InjectModel(Attendance.name)
+    private attendanceModel: Model<Attendance>,
     private authService: AuthService,
     private locationService: LocationService,
   ) {}
+
+  private formatYMD(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
 
   private generateUsername(fullName: string): string {
     // Convert full name to username format (e.g., "Sarvarbek Xazratov" -> "sarvarbek.xazratov")
@@ -277,6 +287,11 @@ export class HrService {
 
   async getEmployeeById(id: string) {
     try {
+      // Validate ObjectId format
+      if (!Types.ObjectId.isValid(id)) {
+        throw new BadRequestException('Invalid employee ID format');
+      }
+
       const employee = await this.employeeModel
         .findOne({ _id: new Types.ObjectId(id), isDeleted: false })
         .lean()
@@ -284,6 +299,9 @@ export class HrService {
       if (!employee) throw new NotFoundException('Employee topilmadi');
       return employee;
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       if (error.name === 'CastError') {
         throw new BadRequestException('Invalid employee ID format');
       }
@@ -1336,5 +1354,394 @@ export class HrService {
     this.logger.log(`Xodim ${employee.fullName} location dan olib tashlandi`);
 
     return { message: 'Xodim location dan muvaffaqiyatli olib tashlandi' };
+  }
+
+  async getMonthlySchedule(year: number, month: number, locationId?: string) {
+    try {
+      // Get all active employees
+      const filter: FilterQuery<Employee> = { status: 'active' };
+      if (locationId) {
+        filter.assignedLocations = new Types.ObjectId(locationId);
+      }
+
+      const employees = await this.employeeModel.find(filter).lean();
+
+      // Generate month days
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const monthDays: Array<{
+        day: number;
+        date: string;
+        isWorkDay: boolean;
+        isWeekend: boolean;
+      }> = [];
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const dayOfWeek = date.getDay();
+        const isWorkDay = dayOfWeek >= 1 && dayOfWeek <= 5; // Monday-Friday
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // Saturday-Sunday
+
+        monthDays.push({
+          day,
+          date: this.formatYMD(date),
+          isWorkDay,
+          isWeekend,
+        });
+      }
+
+      // Process employees
+      const employeeSchedules = employees.map((employee) => {
+        const workDays = monthDays
+          .filter((d) => d.isWorkDay)
+          .map((d) => d.date);
+        const restDays = monthDays
+          .filter((d) => d.isWeekend)
+          .map((d) => d.date);
+
+        return {
+          employeeId: employee._id.toString(),
+          fullName: employee.fullName,
+          positionAndPlace: `${employee.position || 'N/A'}, ${employee.department || 'N/A'}`,
+          workDays,
+          restDays,
+          totalWorkDays: workDays.length,
+          totalRestDays: restDays.length,
+        };
+      });
+
+      const totalWorkDays = monthDays.filter((d) => d.isWorkDay).length;
+      const totalRestDays = monthDays.filter((d) => d.isWeekend).length;
+
+      return {
+        employees: employeeSchedules,
+        year,
+        month,
+        totalWorkDays,
+        totalRestDays,
+      };
+    } catch (error) {
+      this.logger.error('Error getting monthly schedule:', error);
+      throw new BadRequestException('Failed to get monthly schedule');
+    }
+  }
+
+  async getEmployeeMonthlyAttendance(
+    employeeId: string,
+    year: number,
+    month: number,
+  ) {
+    try {
+      // Validate ObjectId format
+      if (!Types.ObjectId.isValid(employeeId)) {
+        throw new BadRequestException('Invalid employee ID format');
+      }
+
+      // Get employee
+      const employee = await this.employeeModel.findById(employeeId).lean();
+      if (!employee) {
+        throw new NotFoundException('Employee not found');
+      }
+
+      // Generate month days
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const monthDays: Array<{
+        day: number;
+        date: string;
+        isWorkDay: boolean;
+        isWeekend: boolean;
+      }> = [];
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const dayOfWeek = date.getDay();
+        const isWorkDay = dayOfWeek >= 1 && dayOfWeek <= 5; // Monday-Friday
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // Saturday-Sunday
+
+        monthDays.push({
+          day,
+          date: this.formatYMD(date),
+          isWorkDay,
+          isWeekend,
+        });
+      }
+
+      // Get real attendance data from attendance collection
+      const dailyAttendance: { [date: string]: any } = {};
+
+      // Query real attendance records for this employee and month
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59);
+
+      try {
+        const attendanceRecords = await this.attendanceModel
+          .find({
+            employeeId: new Types.ObjectId(employeeId),
+            timestamp: {
+              $gte: startDate,
+              $lte: endDate,
+            },
+          })
+          .sort({ timestamp: 1 })
+          .lean();
+
+        // Process attendance records by date
+        const attendanceByDate: { [date: string]: any[] } = {};
+        attendanceRecords.forEach((record) => {
+          const date = this.formatYMD(new Date(record.timestamp));
+          if (!attendanceByDate[date]) {
+            attendanceByDate[date] = [];
+          }
+          attendanceByDate[date].push(record);
+        });
+
+        // Generate daily attendance data
+        monthDays.forEach((dayInfo) => {
+          const dayRecords = attendanceByDate[dayInfo.date] || [];
+
+          if (dayInfo.isWorkDay && dayRecords.length > 0) {
+            // Process real attendance data
+            // Earliest IN
+            const checkInRecord = dayRecords.find((r) => r.type === 'in');
+            // Latest OUT
+            let checkOutRecord = undefined as any;
+            for (let i = dayRecords.length - 1; i >= 0; i--) {
+              if (dayRecords[i]?.type === 'out') {
+                checkOutRecord = dayRecords[i];
+                break;
+              }
+            }
+
+            const checkIn = checkInRecord
+              ? checkInRecord.timestamp
+                  .toTimeString()
+                  .split(' ')[0]
+                  .substring(0, 5)
+              : null;
+            const checkOut = checkOutRecord
+              ? checkOutRecord.timestamp
+                  .toTimeString()
+                  .split(' ')[0]
+                  .substring(0, 5)
+              : null;
+
+            let workHours = 0;
+            if (checkIn && checkOut) {
+              const checkInTime = new Date(`${dayInfo.date}T${checkIn}:00`);
+              const checkOutTime = new Date(`${dayInfo.date}T${checkOut}:00`);
+              workHours = Math.max(
+                0,
+                (checkOutTime.getTime() - checkInTime.getTime()) /
+                  (1000 * 60 * 60),
+              );
+            }
+
+            // Check if currently working (has check-in but no check-out today)
+            const today = new Date();
+            const isToday = dayInfo.date === this.formatYMD(today);
+            const isCurrentlyWorking =
+              isToday && checkIn && !checkOut && dayInfo.isWorkDay;
+
+            dailyAttendance[dayInfo.date] = {
+              checkIn,
+              checkOut,
+              workHours: Math.round(workHours * 10) / 10, // Round to 1 decimal
+              isCurrentlyWorking,
+              date: dayInfo.date,
+              isWorkDay: dayInfo.isWorkDay,
+              isWeekend: dayInfo.isWeekend,
+            };
+          } else {
+            // No work day or no attendance records
+            dailyAttendance[dayInfo.date] = {
+              checkIn: null,
+              checkOut: null,
+              workHours: 0,
+              isCurrentlyWorking: false,
+              date: dayInfo.date,
+              isWorkDay: dayInfo.isWorkDay,
+              isWeekend: dayInfo.isWeekend,
+            };
+          }
+        });
+      } catch (error) {
+        this.logger.error('Error fetching attendance records:', error);
+
+        // Fallback: return empty attendance data
+        monthDays.forEach((dayInfo) => {
+          dailyAttendance[dayInfo.date] = {
+            checkIn: null,
+            checkOut: null,
+            workHours: 0,
+            isCurrentlyWorking: false,
+            date: dayInfo.date,
+            isWorkDay: dayInfo.isWorkDay,
+            isWeekend: dayInfo.isWeekend,
+          };
+        });
+      }
+
+      return {
+        employeeId,
+        employeeName: employee.fullName,
+        year,
+        month,
+        dailyAttendance,
+        totalWorkDays: monthDays.filter((d) => d.isWorkDay).length,
+        totalRestDays: monthDays.filter((d) => d.isWeekend).length,
+      };
+    } catch (error) {
+      this.logger.error('Error getting employee monthly attendance:', error);
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException('Failed to get employee attendance');
+    }
+  }
+
+  async getEmployeeDailyAttendance(
+    employeeId: string,
+    year: number,
+    month: number,
+    day: number,
+  ) {
+    try {
+      // Validate ObjectId format
+      if (!Types.ObjectId.isValid(employeeId)) {
+        throw new BadRequestException('Invalid employee ID format');
+      }
+
+      // Get employee
+      const employee = await this.employeeModel.findById(employeeId).lean();
+      if (!employee) {
+        throw new NotFoundException('Employee not found');
+      }
+
+      // Create date for the specific day
+      const targetDate = new Date(year, month - 1, day);
+      const startOfDay = new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate(),
+        0,
+        0,
+        0,
+      );
+      const endOfDay = new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate(),
+        23,
+        59,
+        59,
+      );
+
+      // Check if it's a work day
+      const dayOfWeek = targetDate.getDay();
+      const isWorkDay = dayOfWeek >= 1 && dayOfWeek <= 5; // Monday-Friday
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // Saturday-Sunday
+
+      try {
+        const attendanceRecords = await this.attendanceModel
+          .find({
+            employeeId: new Types.ObjectId(employeeId),
+            timestamp: {
+              $gte: startOfDay,
+              $lte: endOfDay,
+            },
+          })
+          .sort({ timestamp: 1 })
+          .lean();
+
+        // Process attendance records
+        // Earliest IN of the day
+        const checkInRecord = attendanceRecords.find((r) => r.type === 'in');
+        // Latest OUT of the day
+        let checkOutRecord = undefined as any;
+        for (let i = attendanceRecords.length - 1; i >= 0; i--) {
+          if (attendanceRecords[i]?.type === 'out') {
+            checkOutRecord = attendanceRecords[i];
+            break;
+          }
+        }
+
+        const checkIn = checkInRecord
+          ? checkInRecord.timestamp.toTimeString().split(' ')[0].substring(0, 5)
+          : null;
+        const checkOut = checkOutRecord
+          ? checkOutRecord.timestamp
+              .toTimeString()
+              .split(' ')[0]
+              .substring(0, 5)
+          : null;
+
+        let workHours = 0;
+        if (checkIn && checkOut) {
+          const checkInTime = new Date(
+            `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T${checkIn}:00`,
+          );
+          const checkOutTime = new Date(
+            `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T${checkOut}:00`,
+          );
+          workHours = Math.max(
+            0,
+            (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60),
+          );
+        }
+
+        // Check if currently working (has check-in but no check-out today)
+        const today = new Date();
+        const isToday =
+          targetDate.toISOString().split('T')[0] ===
+          today.toISOString().split('T')[0];
+        const isCurrentlyWorking = isToday && checkIn && !checkOut;
+
+        return {
+          employeeId,
+          employeeName: employee.fullName,
+          date: targetDate.toISOString().split('T')[0],
+          year,
+          month,
+          day,
+          checkIn,
+          checkOut,
+          workHours: Math.round(workHours * 10) / 10,
+          isCurrentlyWorking,
+          isWorkDay,
+          isWeekend,
+          attendanceRecords: attendanceRecords.length,
+        };
+      } catch (error) {
+        this.logger.error('Error fetching daily attendance records:', error);
+
+        // Fallback: return empty attendance data
+        return {
+          employeeId,
+          employeeName: employee.fullName,
+          date: targetDate.toISOString().split('T')[0],
+          year,
+          month,
+          day,
+          checkIn: null,
+          checkOut: null,
+          workHours: 0,
+          isCurrentlyWorking: false,
+          isWorkDay,
+          isWeekend,
+          attendanceRecords: 0,
+        };
+      }
+    } catch (error) {
+      this.logger.error('Error getting employee daily attendance:', error);
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException('Failed to get employee daily attendance');
+    }
   }
 }
