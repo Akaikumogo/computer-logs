@@ -1250,5 +1250,332 @@ export class ScheduleService {
 
     return this.exportAttendanceToPDF(filter);
   }
+
+  // ==================== WORKER SCHEDULE METHODS ====================
+
+  async getWorkerYearlySchedule(year: number, employeeId: string) {
+    const startDate = new Date(year, 0, 1);
+    const endDate = new Date(year, 11, 31, 23, 59, 59);
+
+    // Get employee info
+    const employee = await this.employeeModel.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+
+    // Get all attendance records for the year
+    const attendanceRecords = await this.attendanceModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId),
+        timestamp: { $gte: startDate, $lte: endDate },
+      })
+      .sort({ timestamp: 1 });
+
+    // Group by month
+    const monthlyStats: { [key: string]: any } = {};
+
+    for (let month = 0; month < 12; month++) {
+      const monthName = new Date(year, month).toLocaleString('uz-UZ', {
+        month: 'long',
+      });
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+
+      const monthRecords = attendanceRecords.filter(
+        (record) =>
+          record.timestamp >= monthStart && record.timestamp <= monthEnd,
+      );
+
+      // Calculate work days in month
+      const workDays = this.getWorkDaysInMonth(year, month);
+
+      // Process attendance
+      let present = 0;
+      let absent = 0;
+      let late = 0;
+
+      const processedDays = new Set();
+
+      for (const record of monthRecords) {
+        const day = record.timestamp.getDate();
+        if (processedDays.has(day)) continue;
+
+        const dayRecords = monthRecords.filter(
+          (r) => r.timestamp.getDate() === day,
+        );
+        const hasCheckIn = dayRecords.some((r) => r.type === 'IN');
+        const hasCheckOut = dayRecords.some((r) => r.type === 'OUT');
+
+        if (hasCheckIn) {
+          present++;
+          const checkInRecord = dayRecords.find((r) => r.type === 'IN');
+          if (checkInRecord && checkInRecord.timestamp.getHours() > 9) {
+            late++;
+          }
+        } else if (this.isWorkDay(record.timestamp)) {
+          absent++;
+        }
+
+        processedDays.add(day);
+      }
+
+      monthlyStats[monthName] = {
+        month: monthName,
+        workDays,
+        present,
+        absent,
+        late,
+        attendanceRate:
+          workDays > 0 ? Math.round((present / workDays) * 100) : 0,
+      };
+    }
+
+    return {
+      employee: {
+        id: employee._id,
+        fullName: employee.fullName,
+        position: employee.position,
+        department: employee.department,
+      },
+      year,
+      monthlyStats: Object.values(monthlyStats),
+      summary: {
+        totalWorkDays: Object.values(monthlyStats).reduce(
+          (sum: number, month: any) => sum + month.workDays,
+          0,
+        ),
+        totalPresent: Object.values(monthlyStats).reduce(
+          (sum: number, month: any) => sum + month.present,
+          0,
+        ),
+        totalAbsent: Object.values(monthlyStats).reduce(
+          (sum: number, month: any) => sum + month.absent,
+          0,
+        ),
+        totalLate: Object.values(monthlyStats).reduce(
+          (sum: number, month: any) => sum + month.late,
+          0,
+        ),
+      },
+    };
+  }
+
+  async getWorkerMonthlySchedule(
+    year: number,
+    month: number,
+    employeeId: string,
+  ) {
+    // Use local dates to avoid timezone issues
+    const startDate = new Date(year, month - 1, 1, 0, 0, 0);
+    // endDate should be the last day of the TARGET month → pass month+1, day 0
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    // Get employee info
+    const employee = await this.employeeModel.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+
+    // Get all attendance records for the month
+    const attendanceRecords = await this.attendanceModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId),
+        timestamp: { $gte: startDate, $lte: endDate },
+      })
+      .sort({ timestamp: 1 });
+
+    // Generate daily data
+    const dailyData = [];
+    // Calculate days in the TARGET month reliably
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      // Create date in local timezone to avoid UTC issues
+      const currentDate = new Date(year, month - 1, day);
+      const isWeekend =
+        currentDate.getDay() === 0 || currentDate.getDay() === 6;
+      const isWorkDay = !isWeekend;
+
+      // Format the date string for comparison (YYYY-MM-DD)
+      const targetDateString = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+
+      // Filter records by date string comparison to avoid timezone issues
+      const dayRecords = attendanceRecords.filter((record) => {
+        const recordDateString = record.timestamp.toISOString().split('T')[0];
+        return recordDateString === targetDateString;
+      });
+
+      // Find first check-in and last check-out of the day
+      const checkInRecords = dayRecords.filter((r) => r.type === 'IN');
+      const checkOutRecords = dayRecords.filter((r) => r.type === 'OUT');
+
+      const checkInRecord =
+        checkInRecords.length > 0 ? checkInRecords[0] : null;
+      const checkOutRecord =
+        checkOutRecords.length > 0
+          ? checkOutRecords[checkOutRecords.length - 1]
+          : null;
+
+      let status = 'absent';
+      let checkIn = null;
+      let checkOut = null;
+      let workHours = 0;
+      let isLate = false;
+
+      if (checkInRecord && checkOutRecord) {
+        status = 'present';
+        checkIn = checkInRecord.timestamp.toTimeString().slice(0, 5);
+        checkOut = checkOutRecord.timestamp.toTimeString().slice(0, 5);
+        workHours =
+          (checkOutRecord.timestamp.getTime() -
+            checkInRecord.timestamp.getTime()) /
+          (1000 * 60 * 60);
+        isLate = checkInRecord.timestamp.getHours() > 9;
+        if (isLate) status = 'late';
+      } else if (checkInRecord && !checkOutRecord) {
+        status = 'incomplete';
+        checkIn = checkInRecord.timestamp.toTimeString().slice(0, 5);
+        isLate = checkInRecord.timestamp.getHours() > 9;
+      }
+
+      if (isWeekend) {
+        status = 'weekend';
+      }
+
+      dailyData.push({
+        day,
+        date: targetDateString,
+        dayName: currentDate.toLocaleDateString('uz-UZ', { weekday: 'short' }),
+        isWorkDay,
+        isWeekend,
+        checkIn,
+        checkOut,
+        workHours: Math.round(workHours * 100) / 100,
+        status,
+        isLate,
+      });
+    }
+
+    return {
+      employee: {
+        id: employee._id,
+        fullName: employee.fullName,
+        position: employee.position,
+        department: employee.department,
+      },
+      year,
+      month,
+      dailyData,
+      summary: {
+        totalDays: daysInMonth,
+        workDays: dailyData.filter((d) => d.isWorkDay).length,
+        presentDays: dailyData.filter((d) => d.status === 'present').length,
+        absentDays: dailyData.filter((d) => d.status === 'absent').length,
+        lateDays: dailyData.filter((d) => d.isLate).length,
+        totalWorkHours: dailyData.reduce((sum, d) => sum + d.workHours, 0),
+      },
+    };
+  }
+
+  async getWorkerDailySchedule(date: string, employeeId: string) {
+    // Parse the date string and create local date range
+    const [year, month, day] = date.split('-').map(Number);
+    const startOfDay = new Date(year, month - 1, day, 0, 0, 0);
+    const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+
+    // Get employee info
+    const employee = await this.employeeModel.findById(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+
+    // Get all attendance records for the day
+    const attendanceRecords = await this.attendanceModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId),
+        timestamp: { $gte: startOfDay, $lte: endOfDay },
+      })
+      .sort({ timestamp: 1 });
+
+    // Find first check-in and last check-out of the day
+    const checkInRecords = attendanceRecords.filter((r) => r.type === 'IN');
+    const checkOutRecords = attendanceRecords.filter((r) => r.type === 'OUT');
+
+    const checkInRecord = checkInRecords.length > 0 ? checkInRecords[0] : null;
+    const checkOutRecord =
+      checkOutRecords.length > 0
+        ? checkOutRecords[checkOutRecords.length - 1]
+        : null;
+
+    let status = 'absent';
+    let checkIn = null;
+    let checkOut = null;
+    let workHours = 0;
+    let isLate = false;
+    let isCurrentlyWorking = false;
+
+    if (checkInRecord && checkOutRecord) {
+      status = 'present';
+      checkIn = checkInRecord.timestamp.toTimeString().slice(0, 5);
+      checkOut = checkOutRecord.timestamp.toTimeString().slice(0, 5);
+      workHours =
+        (checkOutRecord.timestamp.getTime() -
+          checkInRecord.timestamp.getTime()) /
+        (1000 * 60 * 60);
+      isLate = checkInRecord.timestamp.getHours() > 9;
+      if (isLate) status = 'late';
+    } else if (checkInRecord && !checkOutRecord) {
+      status = 'incomplete';
+      checkIn = checkInRecord.timestamp.toTimeString().slice(0, 5);
+      isLate = checkInRecord.timestamp.getHours() > 9;
+      isCurrentlyWorking = true;
+    }
+
+    const isWeekend = targetDate.getDay() === 0 || targetDate.getDay() === 6;
+    const isWorkDay = !isWeekend;
+
+    return {
+      employee: {
+        id: employee._id,
+        fullName: employee.fullName,
+        position: employee.position,
+        department: employee.department,
+      },
+      date: date,
+      isWorkDay,
+      isWeekend,
+      checkIn,
+      checkOut,
+      workHours: Math.round(workHours * 100) / 100,
+      status,
+      isLate,
+      isCurrentlyWorking,
+      activities: attendanceRecords.map((record) => ({
+        time: record.timestamp.toTimeString().slice(0, 5),
+        type: record.type === 'IN' ? 'Keldi' : 'Ketti',
+        action: record.type === 'IN' ? 'checkin' : 'checkout',
+        status: 'present',
+      })),
+    };
+  }
+
+  private getWorkDaysInMonth(year: number, month: number): number {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let workDays = 0;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month, day);
+      if (this.isWorkDay(date)) {
+        workDays++;
+      }
+    }
+
+    return workDays;
+  }
+
+  private isWorkDay(date: Date): boolean {
+    const dayOfWeek = date.getDay();
+    return dayOfWeek >= 1 && dayOfWeek <= 5; // Monday to Friday
+  }
 }
 //secret2

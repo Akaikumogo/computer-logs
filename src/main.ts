@@ -1,12 +1,21 @@
+process.env.TZ = 'Asia/Tashkent';
 /* eslint-disable @typescript-eslint/no-floating-promises */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+const compression = require('compression');
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+const helmet = require('helmet');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  app.use(helmet());
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  app.use(compression({ threshold: 1024 }));
 
   // Global validation pipe with automatic trimming
   app.useGlobalPipes(
