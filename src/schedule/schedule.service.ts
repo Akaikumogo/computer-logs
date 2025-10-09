@@ -1303,12 +1303,12 @@ export class ScheduleService {
         const dayRecords = monthRecords.filter(
           (r) => r.timestamp.getDate() === day,
         );
-        const hasCheckIn = dayRecords.some((r) => r.type === 'IN');
-        const hasCheckOut = dayRecords.some((r) => r.type === 'OUT');
+        const hasCheckIn = dayRecords.some((r) => r.type === AttendanceType.IN);
+        const hasCheckOut = dayRecords.some((r) => r.type === AttendanceType.OUT);
 
         if (hasCheckIn) {
           present++;
-          const checkInRecord = dayRecords.find((r) => r.type === 'IN');
+          const checkInRecord = dayRecords.find((r) => r.type === AttendanceType.IN);
           if (checkInRecord && checkInRecord.timestamp.getHours() > 9) {
             late++;
           }
@@ -1385,7 +1385,18 @@ export class ScheduleService {
       .sort({ timestamp: 1 });
 
     // Generate daily data
-    const dailyData = [];
+    const dailyData: Array<{
+      day: number;
+      date: string;
+      dayName: string;
+      isWorkDay: boolean;
+      isWeekend: boolean;
+      checkIn: string | null;
+      checkOut: string | null;
+      workHours: number;
+      status: string;
+      isLate: boolean;
+    }> = [];
     // Calculate days in the TARGET month reliably
     const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -1406,8 +1417,8 @@ export class ScheduleService {
       });
 
       // Find first check-in and last check-out of the day
-      const checkInRecords = dayRecords.filter((r) => r.type === 'IN');
-      const checkOutRecords = dayRecords.filter((r) => r.type === 'OUT');
+      const checkInRecords = dayRecords.filter((r) => r.type === AttendanceType.IN);
+      const checkOutRecords = dayRecords.filter((r) => r.type === AttendanceType.OUT);
 
       const checkInRecord =
         checkInRecords.length > 0 ? checkInRecords[0] : null;
@@ -1417,8 +1428,8 @@ export class ScheduleService {
           : null;
 
       let status = 'absent';
-      let checkIn = null;
-      let checkOut = null;
+    let checkIn: string | null = null;
+    let checkOut: string | null = null;
       let workHours = 0;
       let isLate = false;
 
@@ -1498,8 +1509,8 @@ export class ScheduleService {
       .sort({ timestamp: 1 });
 
     // Find first check-in and last check-out of the day
-    const checkInRecords = attendanceRecords.filter((r) => r.type === 'IN');
-    const checkOutRecords = attendanceRecords.filter((r) => r.type === 'OUT');
+    const checkInRecords = attendanceRecords.filter((r) => r.type === AttendanceType.IN);
+    const checkOutRecords = attendanceRecords.filter((r) => r.type === AttendanceType.OUT);
 
     const checkInRecord = checkInRecords.length > 0 ? checkInRecords[0] : null;
     const checkOutRecord =
@@ -1508,8 +1519,8 @@ export class ScheduleService {
         : null;
 
     let status = 'absent';
-    let checkIn = null;
-    let checkOut = null;
+    let checkIn: string | null = null;
+    let checkOut: string | null = null;
     let workHours = 0;
     let isLate = false;
     let isCurrentlyWorking = false;
@@ -1531,7 +1542,9 @@ export class ScheduleService {
       isCurrentlyWorking = true;
     }
 
-    const isWeekend = targetDate.getDay() === 0 || targetDate.getDay() === 6;
+    const targetDateLocal = new Date(year, month - 1, day);
+    const isWeekend =
+      targetDateLocal.getDay() === 0 || targetDateLocal.getDay() === 6;
     const isWorkDay = !isWeekend;
 
     return {
@@ -1552,8 +1565,8 @@ export class ScheduleService {
       isCurrentlyWorking,
       activities: attendanceRecords.map((record) => ({
         time: record.timestamp.toTimeString().slice(0, 5),
-        type: record.type === 'IN' ? 'Keldi' : 'Ketti',
-        action: record.type === 'IN' ? 'checkin' : 'checkout',
+        type: record.type === AttendanceType.IN ? 'Keldi' : 'Ketti',
+        action: record.type === AttendanceType.IN ? 'checkin' : 'checkout',
         status: 'present',
       })),
     };
