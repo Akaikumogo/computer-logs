@@ -68,6 +68,16 @@ export class UpdateEmployeeDto {
   birthDate?: Date;
 
   @ApiPropertyOptional({
+    description: 'Employee gender',
+    example: 'male',
+    enum: ['male', 'female'],
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(['male', 'female'])
+  gender?: 'male' | 'female';
+
+  @ApiPropertyOptional({
     description: 'Passport ID',
     example: 'AA1234567',
     required: false,

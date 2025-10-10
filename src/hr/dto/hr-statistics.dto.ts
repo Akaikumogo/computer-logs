@@ -148,4 +148,18 @@ export class HrStatisticsDto {
     example: 12,
   })
   employeesWithTempPasswords: number;
+
+  @ApiProperty({
+    description: 'Gender distribution statistics',
+    example: {
+      male: 85,
+      female: 65,
+      unspecified: 0,
+    },
+  })
+  genderStats: {
+    male: number;
+    female: number;
+    unspecified: number;
+  };
 }

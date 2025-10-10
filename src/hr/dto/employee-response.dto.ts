@@ -22,6 +22,13 @@ export class EmployeeResponseDto {
   @ApiProperty({ required: false })
   birthDate?: Date;
 
+  @ApiProperty({
+    required: false,
+    enum: ['male', 'female'],
+    description: 'Employee gender',
+  })
+  gender?: 'male' | 'female';
+
   @ApiProperty({ required: false })
   passportId?: string;
 

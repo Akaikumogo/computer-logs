@@ -657,6 +657,7 @@ export class HrService {
       recentHires,
       employeesWithTempPasswords,
       salaryStats,
+      genderStats,
     ] = await Promise.all([
       this.employeeModel.countDocuments({ isDeleted: false }),
       this.employeeModel.countDocuments({ status: 'active', isDeleted: false }),
@@ -736,6 +737,19 @@ export class HrService {
           },
         },
       ]),
+      this.employeeModel.aggregate([
+        { $match: { isDeleted: false } },
+        {
+          $group: {
+            _id: null,
+            male: { $sum: { $cond: [{ $eq: ['$gender', 'male'] }, 1, 0] } },
+            female: { $sum: { $cond: [{ $eq: ['$gender', 'female'] }, 1, 0] } },
+            unspecified: {
+              $sum: { $cond: [{ $in: ['$gender', [null, undefined]] }, 1, 0] },
+            },
+          },
+        },
+      ]),
     ]);
 
     const avgSalary = salaryStats[0]?.averageSalary || 0;
@@ -764,6 +778,7 @@ export class HrService {
       })),
       recentHires,
       employeesWithTempPasswords,
+      genderStats: genderStats[0] || { male: 0, female: 0, unspecified: 0 },
     };
   }
 

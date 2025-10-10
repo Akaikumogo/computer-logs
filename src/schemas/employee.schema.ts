@@ -21,12 +21,14 @@ export class Employee extends Document {
   @Prop()
   birthDate?: Date;
 
+  @Prop({ enum: ['male', 'female'], required: false })
+  gender?: 'male' | 'female';
+
   @Prop({ unique: true, sparse: true })
   passportId?: string;
 
   @Prop({ type: [String], default: [] })
   phones?: string[];
-
 
   @Prop()
   address?: string;

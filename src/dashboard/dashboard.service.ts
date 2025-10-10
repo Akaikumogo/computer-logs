@@ -135,6 +135,280 @@ export class DashboardService {
     };
   }
 
+  async getDashboardOverview() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Jami xodimlar soni
+    const totalEmployees = await this.employeeModel.countDocuments({
+      status: 'active',
+      isDeleted: false,
+    });
+
+    // Bugungi attendance ma'lumotlari
+    const todayAttendances = await this.attendanceModel
+      .find({
+        timestamp: { $gte: today, $lt: tomorrow },
+        isDeleted: false,
+      })
+      .populate('employeeId');
+
+    const todayCheckIns = todayAttendances.filter(
+      (a) => a.type === AttendanceType.IN,
+    );
+    const todayCheckOuts = todayAttendances.filter(
+      (a) => a.type === AttendanceType.OUT,
+    );
+
+    // Bugun ishga kelgan xodimlar
+    const presentEmployeeIds = new Set(
+      todayCheckIns.map((a) => a.employeeId.toString()),
+    );
+    const presentToday = presentEmployeeIds.size;
+
+    // Kechikkanlar
+    const lateToday = todayCheckIns.filter(
+      (a) => a.status === AttendanceStatus.LATE,
+    ).length;
+
+    // Kelmaganlar
+    const absentToday = totalEmployees - presentToday;
+
+    // Davomat foizi
+    const attendanceRate =
+      totalEmployees > 0
+        ? Math.round((presentToday / totalEmployees) * 100)
+        : 0;
+
+    // Bugungi vazifalar (mock data - keyin real API qo'shamiz)
+    const totalTasks = 200;
+    const completedTasks = 15;
+    const pendingTasks = totalTasks - completedTasks;
+
+    // Haftalik statistika (oxirgi 7 kun)
+    const weeklyStats = await this.getWeeklyStats();
+
+    // Oylik statistika (oxirgi 30 kun)
+    const monthlyStats = await this.getMonthlyStats();
+
+    return {
+      // Asosiy statistika
+      totalEmployees,
+      presentToday,
+      lateToday,
+      absentToday,
+      attendanceRate,
+
+      // Vazifalar
+      totalTasks,
+      completedTasks,
+      pendingTasks,
+
+      // Haftalik statistika
+      weeklyStats,
+
+      // Oylik statistika
+      monthlyStats,
+
+      // Bugungi ishchilar ro'yxati
+      todayEmployees: await this.getTodayEmployees(),
+
+      // Bugungi vazifalar ro'yxati
+      todayTasks: await this.getTodayTasks(),
+    };
+  }
+
+  private async getWeeklyStats() {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 7);
+
+    const totalEmployees = await this.employeeModel.countDocuments({
+      status: 'active',
+      isDeleted: false,
+    });
+
+    const weeklyAttendances = await this.attendanceModel
+      .find({
+        timestamp: { $gte: startDate, $lte: endDate },
+        type: AttendanceType.IN,
+        isDeleted: false,
+      })
+      .populate('employeeId');
+
+    const presentEmployeeIds = new Set(
+      weeklyAttendances.map((a) => a.employeeId.toString()),
+    );
+    const present = presentEmployeeIds.size;
+    const late = weeklyAttendances.filter(
+      (a) => a.status === AttendanceStatus.LATE,
+    ).length;
+
+    return {
+      totalDays: 7,
+      present,
+      late,
+      absent: totalEmployees * 7 - present,
+      attendanceRate:
+        totalEmployees > 0
+          ? Math.round((present / (totalEmployees * 7)) * 100)
+          : 0,
+    };
+  }
+
+  private async getMonthlyStats() {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+
+    const totalEmployees = await this.employeeModel.countDocuments({
+      status: 'active',
+      isDeleted: false,
+    });
+
+    const monthlyAttendances = await this.attendanceModel
+      .find({
+        timestamp: { $gte: startDate, $lte: endDate },
+        type: AttendanceType.IN,
+        isDeleted: false,
+      })
+      .populate('employeeId');
+
+    const presentEmployeeIds = new Set(
+      monthlyAttendances.map((a) => a.employeeId.toString()),
+    );
+    const present = presentEmployeeIds.size;
+    const late = monthlyAttendances.filter(
+      (a) => a.status === AttendanceStatus.LATE,
+    ).length;
+
+    return {
+      totalDays: 30,
+      present,
+      late,
+      absent: totalEmployees * 30 - present,
+      attendanceRate:
+        totalEmployees > 0
+          ? Math.round((present / (totalEmployees * 30)) * 100)
+          : 0,
+    };
+  }
+
+  private async getTodayEmployees() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Har bir xodim uchun eng birinchi kirish va eng oxirgi chiqishni olish
+    const pipeline = [
+      {
+        $match: {
+          timestamp: { $gte: today, $lt: tomorrow },
+          type: AttendanceType.IN,
+          isDeleted: false,
+        },
+      },
+      {
+        $group: {
+          _id: '$employeeId',
+          firstCheckIn: { $first: '$$ROOT' },
+          lastCheckOut: { $last: '$$ROOT' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'employees',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'employee',
+        },
+      },
+      {
+        $unwind: '$employee',
+      },
+    ];
+
+    const employees = await this.attendanceModel.aggregate(pipeline);
+
+    const result: any[] = [];
+
+    for (const item of employees) {
+      const employee = item.employee;
+      const firstCheckIn = item.firstCheckIn;
+
+      // Eng oxirgi check-out ni topish
+      const checkOut = await this.attendanceModel
+        .findOne({
+          employeeId: employee._id,
+          timestamp: { $gte: today, $lt: tomorrow },
+          type: AttendanceType.OUT,
+          isDeleted: false,
+        })
+        .sort({ timestamp: -1 });
+
+      result.push({
+        id: employee._id,
+        name: employee.fullName,
+        checkInTime: firstCheckIn.timestamp
+          .toTimeString()
+          .split(' ')[0]
+          .substring(0, 5),
+        checkOutTime: checkOut
+          ? checkOut.timestamp.toTimeString().split(' ')[0].substring(0, 5)
+          : null,
+        status:
+          firstCheckIn.status === AttendanceStatus.LATE ? 'late' : 'present',
+        department: employee.department,
+      });
+    }
+
+    return result;
+  }
+
+  private async getTodayTasks() {
+    // Mock data - keyin real task API qo'shamiz
+    return [
+      {
+        id: 1,
+        title: 'Sistema yangilanishi',
+        status: 'inProgress',
+        assignedTo: 'IT Department',
+        createdAt: '09:30',
+      },
+      {
+        id: 2,
+        title: 'Hisobot tayyorlash',
+        status: 'completed',
+        assignedTo: 'Buxgalteriya',
+        createdAt: '08:15',
+      },
+      {
+        id: 3,
+        title: 'Mijoz bilan uchrashuv',
+        status: 'pending',
+        assignedTo: 'Moliya',
+        createdAt: '10:00',
+      },
+      {
+        id: 4,
+        title: 'Dokumentatsiya tekshirish',
+        status: 'inProgress',
+        assignedTo: 'HR',
+        createdAt: '11:30',
+      },
+      {
+        id: 5,
+        title: "Yig'ilish tashkillashtirish",
+        status: 'pending',
+        assignedTo: 'Boshqarma',
+        createdAt: '14:00',
+      },
+    ];
+  }
+
   async getAttendanceSummary(date: string) {
     const targetDate = new Date(date);
     targetDate.setHours(0, 0, 0, 0);

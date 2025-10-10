@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  UseGuards,
-  Res,
-} from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { DashboardService } from './dashboard.service';
 import { AttendanceFilterDto } from '../dto/schedule.dto';
@@ -37,10 +31,21 @@ export class DashboardController {
     return this.dashboardService.getDashboardStats();
   }
 
+  @Get('overview')
+  @ApiOperation({
+    summary: "Dashboard umumiy ko'rinish",
+    description:
+      "Bosh sahifa uchun to'liq dashboard ma'lumotlari - statistika, vazifalar, ishchilar",
+  })
+  @ApiResponse({ status: 200, description: "Dashboard umumiy ko'rinish" })
+  async getDashboardOverview() {
+    return this.dashboardService.getDashboardOverview();
+  }
+
   @Get('summary')
   @ApiOperation({
     summary: 'Attendance xulosa',
-    description: 'Attendance bo\'yicha umumiy xulosa',
+    description: "Attendance bo'yicha umumiy xulosa",
   })
   @ApiQuery({ name: 'date', required: false, description: 'Sana (YYYY-MM-DD)' })
   @ApiResponse({ status: 200, description: 'Attendance xulosa' })
@@ -52,44 +57,64 @@ export class DashboardController {
   @Get('export/excel')
   @ApiOperation({
     summary: 'Excel formatida export',
-    description: 'Attendance ma\'lumotlarini Excel formatida export qilish',
+    description: "Attendance ma'lumotlarini Excel formatida export qilish",
   })
-  @ApiQuery({ name: 'startDate', required: false, description: 'Boshlang\'ich sana' })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: "Boshlang'ich sana",
+  })
   @ApiQuery({ name: 'endDate', required: false, description: 'Tugash sana' })
   @ApiQuery({ name: 'employeeId', required: false, description: 'Xodim ID' })
   @ApiQuery({ name: 'status', required: false, description: 'Status filter' })
   @ApiResponse({ status: 200, description: 'Excel fayl' })
   @Roles(UserRole.ADMIN, UserRole.HR)
   @UseGuards(RolesGuard)
-  async exportToExcel(@Query() filter: AttendanceFilterDto, @Res() res: Response) {
+  async exportToExcel(
+    @Query() filter: AttendanceFilterDto,
+    @Res() res: Response,
+  ) {
     const data = await this.dashboardService.exportAttendanceToExcel(filter);
-    
+
     // Excel fayl yaratish uchun xlsx kutubxonasi kerak
     // Hozircha JSON formatida qaytaramiz
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename="attendance_export.json"');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="attendance_export.json"',
+    );
     res.json(data);
   }
 
   @Get('export/pdf')
   @ApiOperation({
     summary: 'PDF formatida export',
-    description: 'Attendance ma\'lumotlarini PDF formatida export qilish',
+    description: "Attendance ma'lumotlarini PDF formatida export qilish",
   })
-  @ApiQuery({ name: 'startDate', required: false, description: 'Boshlang\'ich sana' })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: "Boshlang'ich sana",
+  })
   @ApiQuery({ name: 'endDate', required: false, description: 'Tugash sana' })
   @ApiQuery({ name: 'employeeId', required: false, description: 'Xodim ID' })
   @ApiQuery({ name: 'status', required: false, description: 'Status filter' })
   @ApiResponse({ status: 200, description: 'PDF fayl' })
   @Roles(UserRole.ADMIN, UserRole.HR)
   @UseGuards(RolesGuard)
-  async exportToPDF(@Query() filter: AttendanceFilterDto, @Res() res: Response) {
+  async exportToPDF(
+    @Query() filter: AttendanceFilterDto,
+    @Res() res: Response,
+  ) {
     const data = await this.dashboardService.exportAttendanceToPDF(filter);
-    
+
     // PDF fayl yaratish uchun puppeteer yoki boshqa kutubxona kerak
     // Hozircha JSON formatida qaytaramiz
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename="attendance_export.pdf"');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="attendance_export.pdf"',
+    );
     res.json(data);
   }
 
@@ -120,7 +145,7 @@ export class DashboardController {
     const currentDate = new Date();
     const targetYear = year ? parseInt(year) : currentDate.getFullYear();
     const targetMonth = month ? parseInt(month) : currentDate.getMonth() + 1;
-    
+
     return this.dashboardService.getMonthlyReport(targetYear, targetMonth);
   }
 
@@ -134,7 +159,7 @@ export class DashboardController {
   async getYearlyReport(@Query('year') year?: string) {
     const currentDate = new Date();
     const targetYear = year ? parseInt(year) : currentDate.getFullYear();
-    
+
     return this.dashboardService.getYearlyReport(targetYear);
   }
 }

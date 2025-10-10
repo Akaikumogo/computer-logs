@@ -114,14 +114,19 @@ export class ComputersService {
   }
 
   /** KOMPYUTERGA XODIMNI BIRIKTIRISH/AJRATISH */
-  async assignEmployee(device: string, dto: { employeeId?: string | null; deviceRealName?: string | null }) {
+  async assignEmployee(
+    device: string,
+    dto: { employeeId?: string | null; deviceRealName?: string | null },
+  ) {
     const computer = await this.computerModel.findOne({ name: device }).exec();
     if (!computer) throw new NotFoundException('Device topilmadi');
 
     // Update employee assignment
     if (dto.employeeId !== undefined) {
       if (dto.employeeId) {
-        const employee = await this.employeeModel.findById(dto.employeeId).exec();
+        const employee = await this.employeeModel
+          .findById(dto.employeeId)
+          .exec();
         if (!employee) throw new NotFoundException('Employee topilmadi');
         computer.assignedEmployeeId = (employee as any)._id;
       } else {
@@ -202,6 +207,20 @@ export class ComputersService {
   }
   async getApplicationByName(name: string) {
     return this.applicationModel.findOne({ name }).lean().exec();
+  }
+
+  async updateApplication(
+    id: string,
+    updateData: { tag?: string; description?: string },
+  ) {
+    return this.applicationModel
+      .findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { new: true, runValidators: true },
+      )
+      .lean()
+      .exec();
   }
 
   /** AI service health check */

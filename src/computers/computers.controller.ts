@@ -20,6 +20,7 @@ import {
   ApiResponse,
   ApiBody,
   ApiBearerAuth,
+  ApiParam,
 } from '@nestjs/swagger';
 import { AssignEmployeeDto } from './dto/assign-employee.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -94,8 +95,35 @@ export class ComputersController {
     return this.computersService.getApplications(p, l);
   }
   @Get('applications/:name')
-  @ApiOperation({ summary: 'Ilova nomi orqali bitta yozuvni olish' })
-  getApplication(@Param('name') name: string) {
+  @ApiOperation({
+    summary: 'Get application by name',
+    description: 'Get specific application details by name',
+  })
+  getApplicationByName(@Param('name') name: string) {
     return this.computersService.getApplicationByName(name);
+  }
+
+  @Patch('applications/:id')
+  @ApiOperation({
+    summary: 'Update application by ID',
+    description: 'Update application tag and description',
+  })
+  @ApiParam({ name: 'id', description: 'Application MongoDB ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        tag: { type: 'string', enum: ['game', 'social', 'office', 'windows'] },
+        description: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Application updated successfully' })
+  @ApiResponse({ status: 404, description: 'Application not found' })
+  updateApplication(
+    @Param('id') id: string,
+    @Body() updateData: { tag?: string; description?: string },
+  ) {
+    return this.computersService.updateApplication(id, updateData);
   }
 }

@@ -43,6 +43,16 @@ export class CreateEmployeeDto {
   @IsDateString()
   birthDate?: Date;
 
+  @ApiProperty({
+    example: 'male',
+    required: false,
+    enum: ['male', 'female'],
+    description: 'Employee gender',
+  })
+  @IsOptional()
+  @IsIn(['male', 'female'])
+  gender?: 'male' | 'female';
+
   @ApiProperty({ example: 'AA1234567', required: false })
   @IsOptional()
   @IsString()

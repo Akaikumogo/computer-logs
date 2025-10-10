@@ -142,18 +142,16 @@ export class GetEmployeesQueryDto {
   page?: number = 1;
 
   @ApiPropertyOptional({
-    description: 'Number of items per page',
+    description: 'Number of items per page (unlimited)',
     example: 20,
     default: 20,
     minimum: 1,
-    maximum: 100,
     required: false,
   })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  @Max(100)
   limit?: number = 20;
 
   @ApiPropertyOptional({

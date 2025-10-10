@@ -433,10 +433,10 @@ export class ScheduleService {
     date: string,
     locationName?: string,
   ): Promise<DailyScheduleDto> {
-    const targetDate = new Date(date);
-    targetDate.setHours(0, 0, 0, 0);
+    // Create date in UTC to match database timestamps
+    const targetDate = new Date(date + 'T00:00:00.000Z');
     const nextDay = new Date(targetDate);
-    nextDay.setDate(nextDay.getDate() + 1);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
 
     // Barcha xodimlarni olish
     const employees = await this.employeeModel.find({
@@ -736,9 +736,15 @@ export class ScheduleService {
       attendances.map((a) => a.employeeId.toString()),
     );
     const present = presentEmployeeIds.size;
-    const late = attendances.filter(
-      (a) => a.status === AttendanceStatus.LATE,
-    ).length;
+
+    // Kechikkan xodimlar soni (faqat kechikkan status bilan)
+    const lateEmployeeIds = new Set(
+      attendances
+        .filter((a) => a.status === AttendanceStatus.LATE)
+        .map((a) => a.employeeId.toString()),
+    );
+    const late = lateEmployeeIds.size;
+
     const absent = totalEmployees - present;
     const attendanceRate =
       totalEmployees > 0 ? Math.round((present / totalEmployees) * 100) : 0;
@@ -1304,11 +1310,15 @@ export class ScheduleService {
           (r) => r.timestamp.getDate() === day,
         );
         const hasCheckIn = dayRecords.some((r) => r.type === AttendanceType.IN);
-        const hasCheckOut = dayRecords.some((r) => r.type === AttendanceType.OUT);
+        const hasCheckOut = dayRecords.some(
+          (r) => r.type === AttendanceType.OUT,
+        );
 
         if (hasCheckIn) {
           present++;
-          const checkInRecord = dayRecords.find((r) => r.type === AttendanceType.IN);
+          const checkInRecord = dayRecords.find(
+            (r) => r.type === AttendanceType.IN,
+          );
           if (checkInRecord && checkInRecord.timestamp.getHours() > 9) {
             late++;
           }
@@ -1417,8 +1427,12 @@ export class ScheduleService {
       });
 
       // Find first check-in and last check-out of the day
-      const checkInRecords = dayRecords.filter((r) => r.type === AttendanceType.IN);
-      const checkOutRecords = dayRecords.filter((r) => r.type === AttendanceType.OUT);
+      const checkInRecords = dayRecords.filter(
+        (r) => r.type === AttendanceType.IN,
+      );
+      const checkOutRecords = dayRecords.filter(
+        (r) => r.type === AttendanceType.OUT,
+      );
 
       const checkInRecord =
         checkInRecords.length > 0 ? checkInRecords[0] : null;
@@ -1428,8 +1442,8 @@ export class ScheduleService {
           : null;
 
       let status = 'absent';
-    let checkIn: string | null = null;
-    let checkOut: string | null = null;
+      let checkIn: string | null = null;
+      let checkOut: string | null = null;
       let workHours = 0;
       let isLate = false;
 
@@ -1509,8 +1523,12 @@ export class ScheduleService {
       .sort({ timestamp: 1 });
 
     // Find first check-in and last check-out of the day
-    const checkInRecords = attendanceRecords.filter((r) => r.type === AttendanceType.IN);
-    const checkOutRecords = attendanceRecords.filter((r) => r.type === AttendanceType.OUT);
+    const checkInRecords = attendanceRecords.filter(
+      (r) => r.type === AttendanceType.IN,
+    );
+    const checkOutRecords = attendanceRecords.filter(
+      (r) => r.type === AttendanceType.OUT,
+    );
 
     const checkInRecord = checkInRecords.length > 0 ? checkInRecords[0] : null;
     const checkOutRecord =

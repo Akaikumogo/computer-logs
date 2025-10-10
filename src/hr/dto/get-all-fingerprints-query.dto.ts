@@ -18,12 +18,14 @@ export class GetAllFingerprintsQueryDto {
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({ description: 'Items per page (1-100)', default: 20 })
+  @ApiPropertyOptional({
+    description: 'Items per page (unlimited)',
+    default: 20,
+  })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
   @IsInt()
   @Min(1)
-  @Max(100)
   limit?: number = 20;
 
   @ApiPropertyOptional({
