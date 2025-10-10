@@ -17,6 +17,18 @@ async function bootstrap() {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   app.use(compression({ threshold: 1024 }));
 
+  // Disable ETag and set global no-cache headers to avoid 304
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  app.use((req, res, next) => {
+    // Disable etag generation
+    // @ts-ignore
+    res.app.set('etag', false);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    next();
+  });
+
   // Global validation pipe with automatic trimming
   app.useGlobalPipes(
     new ValidationPipe({
