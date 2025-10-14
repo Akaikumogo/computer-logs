@@ -38,7 +38,11 @@ export class DashboardController {
       "Bosh sahifa uchun to'liq dashboard ma'lumotlari - statistika, vazifalar, ishchilar",
   })
   @ApiResponse({ status: 200, description: "Dashboard umumiy ko'rinish" })
-  async getDashboardOverview() {
+  async getDashboardOverview(@Res({ passthrough: true }) res: Response) {
+    // Prevent client/proxy caches
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return this.dashboardService.getDashboardOverview();
   }
 
@@ -161,5 +165,23 @@ export class DashboardController {
     const targetYear = year ? parseInt(year) : currentDate.getFullYear();
 
     return this.dashboardService.getYearlyReport(targetYear);
+  }
+
+  @Get('maintenance/fix-late-status')
+  @ApiOperation({
+    summary: 'Normalize late statuses (first IN only per day)',
+    description:
+      'Fix existing data so only the first IN per employee per day may be LATE; subsequent INs become PRESENT. Optional date range.',
+  })
+  @ApiQuery({ name: 'startDate', required: false, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'endDate', required: false, description: 'YYYY-MM-DD' })
+  @ApiResponse({ status: 200, description: 'Updated count' })
+  // @Roles(UserRole.ADMIN, UserRole.HR)
+  // @UseGuards(RolesGuard)
+  async fixLateStatus(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.dashboardService.fixLateStatus(startDate, endDate);
   }
 }

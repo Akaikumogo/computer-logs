@@ -22,6 +22,7 @@ import { Employee } from '../schemas/employee.schema';
 import { Fingerprint } from '../schemas/fingerprint.schema';
 import { LocationService } from '../location/location.service';
 import { SnapshotService } from './snapshot.service';
+import { ScheduleGateway } from './schedule.gateway';
 import {
   CheckInDto,
   CheckOutDto,
@@ -47,6 +48,7 @@ export class ScheduleService {
     @InjectModel(Fingerprint.name) private fingerprintModel: Model<Fingerprint>,
     private locationService: LocationService,
     private snapshotService: SnapshotService,
+    private readonly gateway: ScheduleGateway,
   ) {}
 
   // ==================== CHECK IN/OUT OPERATIONS ====================
@@ -117,6 +119,16 @@ export class ScheduleService {
     this.logger.log(
       `Xodim ${employee.fullName} kirish qayd qildi - ${status} status bilan`,
     );
+
+    // Realtime
+    const dateISO = now.toISOString().split('T')[0];
+    this.gateway.emitAttendanceChanged({
+      employeeId: (employee._id as any).toString(),
+      dateISO,
+      event: 'checkin',
+    });
+    this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
+    this.gateway.emitDailyScheduleChanged({ dateISO });
 
     return {
       id: savedAttendance._id,
@@ -211,6 +223,16 @@ export class ScheduleService {
     this.logger.log(
       `Xodim ${employee.fullName} chiqish qayd qildi - ${status} status bilan`,
     );
+
+    // Realtime
+    const dateISO = now.toISOString().split('T')[0];
+    this.gateway.emitAttendanceChanged({
+      employeeId: (employee._id as any).toString(),
+      dateISO,
+      event: 'checkout',
+    });
+    this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
+    this.gateway.emitDailyScheduleChanged({ dateISO });
 
     return {
       id: savedAttendance._id,
@@ -1196,6 +1218,21 @@ export class ScheduleService {
       { new: true },
     );
 
+    if (updatedAttendance) {
+      const dateISO = new Date(updatedAttendance.timestamp)
+        .toISOString()
+        .split('T')[0];
+      this.gateway.emitAttendanceChanged({
+        employeeId: (
+          updatedAttendance.employeeId as unknown as Types.ObjectId
+        ).toString(),
+        dateISO,
+        event: 'update',
+      });
+      this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
+      this.gateway.emitDailyScheduleChanged({ dateISO });
+    }
+
     return updatedAttendance;
   }
 
@@ -1206,6 +1243,16 @@ export class ScheduleService {
     }
 
     await this.attendanceModel.findByIdAndDelete(id);
+    const dateISO = new Date(attendance.timestamp).toISOString().split('T')[0];
+    this.gateway.emitAttendanceChanged({
+      employeeId: (
+        attendance.employeeId as unknown as Types.ObjectId
+      ).toString(),
+      dateISO,
+      event: 'delete',
+    });
+    this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
+    this.gateway.emitDailyScheduleChanged({ dateISO });
     return { message: "Davomat o'chirildi" };
   }
 

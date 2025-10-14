@@ -57,8 +57,15 @@ export class DashboardService {
     );
     const presentToday = presentEmployeeIds.size;
 
-    // Kechikkanlar
-    const lateToday = todayCheckIns.filter(
+    // Kechikkanlar (faqat har bir xodimning kun mobaynidagi eng birinchi kirishi bo'yicha)
+    const firstInByEmployeeStats = new Map<string, Attendance>();
+    for (const a of [...todayCheckIns].sort(
+      (x, y) => x.timestamp.getTime() - y.timestamp.getTime(),
+    )) {
+      const key = a.employeeId.toString();
+      if (!firstInByEmployeeStats.has(key)) firstInByEmployeeStats.set(key, a);
+    }
+    const lateToday = Array.from(firstInByEmployeeStats.values()).filter(
       (a) => a.status === AttendanceStatus.LATE,
     ).length;
 
@@ -168,8 +175,16 @@ export class DashboardService {
     );
     const presentToday = presentEmployeeIds.size;
 
-    // Kechikkanlar
-    const lateToday = todayCheckIns.filter(
+    // Kechikkanlar (faqat har bir xodimning kun mobaynidagi eng birinchi kirishi bo'yicha)
+    const firstInByEmployeeOverview = new Map<string, Attendance>();
+    for (const a of [...todayCheckIns].sort(
+      (x, y) => x.timestamp.getTime() - y.timestamp.getTime(),
+    )) {
+      const key = a.employeeId.toString();
+      if (!firstInByEmployeeOverview.has(key))
+        firstInByEmployeeOverview.set(key, a);
+    }
+    const lateToday = Array.from(firstInByEmployeeOverview.values()).filter(
       (a) => a.status === AttendanceStatus.LATE,
     ).length;
 
@@ -242,7 +257,19 @@ export class DashboardService {
       weeklyAttendances.map((a) => a.employeeId.toString()),
     );
     const present = presentEmployeeIds.size;
-    const late = weeklyAttendances.filter(
+    // Kechikishlar: har bir kun va xodim uchun faqat eng birinchi kirishga qarab
+    const firstInByEmployeeDayWeekly = new Map<string, Attendance>();
+    for (const a of [...weeklyAttendances].sort(
+      (x, y) => x.timestamp.getTime() - y.timestamp.getTime(),
+    )) {
+      const d = new Date(a.timestamp);
+      d.setHours(0, 0, 0, 0);
+      const dayKey = d.toISOString();
+      const key = `${a.employeeId.toString()}__${dayKey}`;
+      if (!firstInByEmployeeDayWeekly.has(key))
+        firstInByEmployeeDayWeekly.set(key, a);
+    }
+    const late = Array.from(firstInByEmployeeDayWeekly.values()).filter(
       (a) => a.status === AttendanceStatus.LATE,
     ).length;
 
@@ -280,7 +307,19 @@ export class DashboardService {
       monthlyAttendances.map((a) => a.employeeId.toString()),
     );
     const present = presentEmployeeIds.size;
-    const late = monthlyAttendances.filter(
+    // Kechikishlar: har bir kun va xodim uchun faqat eng birinchi kirishga qarab
+    const firstInByEmployeeDayMonthly = new Map<string, Attendance>();
+    for (const a of [...monthlyAttendances].sort(
+      (x, y) => x.timestamp.getTime() - y.timestamp.getTime(),
+    )) {
+      const d = new Date(a.timestamp);
+      d.setHours(0, 0, 0, 0);
+      const dayKey = d.toISOString();
+      const key = `${a.employeeId.toString()}__${dayKey}`;
+      if (!firstInByEmployeeDayMonthly.has(key))
+        firstInByEmployeeDayMonthly.set(key, a);
+    }
+    const late = Array.from(firstInByEmployeeDayMonthly.values()).filter(
       (a) => a.status === AttendanceStatus.LATE,
     ).length;
 
@@ -349,6 +388,17 @@ export class DashboardService {
         })
         .sort({ timestamp: -1 });
 
+      // Bugungi oxirgi attendance yozuvi (IN yoki OUT)
+      const lastTodayAttendance = await this.attendanceModel
+        .findOne({
+          employeeId: employee._id,
+          timestamp: { $gte: today, $lt: tomorrow },
+          isDeleted: false,
+        })
+        .sort({ timestamp: -1 });
+
+      const inWork = lastTodayAttendance?.type === AttendanceType.IN;
+
       result.push({
         id: employee._id,
         name: employee.fullName,
@@ -359,6 +409,7 @@ export class DashboardService {
         checkOutTime: checkOut
           ? checkOut.timestamp.toTimeString().split(' ')[0].substring(0, 5)
           : null,
+        inWork,
         status:
           firstCheckIn.status === AttendanceStatus.LATE ? 'late' : 'present',
         department: employee.department,
@@ -430,7 +481,16 @@ export class DashboardService {
       attendances.map((a) => a.employeeId.toString()),
     );
     const present = presentEmployeeIds.size;
-    const late = attendances.filter(
+    // Kechikishlar: faqat har bir xodimning KUN MOBAYNIDAGI ENG BIRINCHI KIRISHI bo'yicha
+    const firstInByEmployeeSummary = new Map<string, Attendance>();
+    for (const a of [...attendances].sort(
+      (x, y) => x.timestamp.getTime() - y.timestamp.getTime(),
+    )) {
+      const key = a.employeeId.toString();
+      if (!firstInByEmployeeSummary.has(key))
+        firstInByEmployeeSummary.set(key, a);
+    }
+    const late = Array.from(firstInByEmployeeSummary.values()).filter(
       (a) => a.status === AttendanceStatus.LATE,
     ).length;
     const absent = totalEmployees - present;
@@ -624,6 +684,72 @@ export class DashboardService {
       summary: yearSummary,
       monthlyReports,
     };
+  }
+
+  // Maintenance: normalize late statuses to only first IN per employee per day
+  async fixLateStatus(startDateStr?: string, endDateStr?: string) {
+    const start = startDateStr ? new Date(startDateStr) : new Date('2000-01-01');
+    start.setHours(0, 0, 0, 0);
+    const end = endDateStr ? new Date(endDateStr) : new Date();
+    end.setHours(23, 59, 59, 999);
+
+    // Fetch IN records in range
+    const attendances = await this.attendanceModel
+      .find({
+        timestamp: { $gte: start, $lte: end },
+        type: AttendanceType.IN,
+        isDeleted: false,
+      })
+      .sort({ employeeId: 1, timestamp: 1 })
+      .lean();
+
+    const updates: { updateOne: { filter: any; update: any } }[] = [];
+    let updatedCount = 0;
+
+    // Map key: employeeId + day (local day start)
+    const firstInMap = new Map<string, string>(); // key -> attendance _id of first IN
+
+    for (const a of attendances) {
+      const d = new Date(a.timestamp);
+      d.setHours(0, 0, 0, 0);
+      const dayKey = d.toISOString();
+      const key = `${a.employeeId.toString()}__${dayKey}`;
+
+      const workStart = new Date(d);
+      workStart.setHours(8, 0, 0, 0); // 08:00 as start
+
+      if (!firstInMap.has(key)) {
+        // This is the first IN of the day for the employee
+        firstInMap.set(key, (a as any)._id.toString());
+        const desiredStatus = a.timestamp > workStart ? AttendanceStatus.LATE : AttendanceStatus.NORMAL;
+        if (a.status !== desiredStatus) {
+          updates.push({
+            updateOne: {
+              filter: { _id: (a as any)._id },
+              update: { $set: { status: desiredStatus } },
+            },
+          });
+          updatedCount++;
+        }
+      } else {
+        // Subsequent INs of same day must never be LATE
+        if (a.status === AttendanceStatus.LATE) {
+          updates.push({
+            updateOne: {
+              filter: { _id: (a as any)._id },
+              update: { $set: { status: AttendanceStatus.NORMAL } },
+            },
+          });
+          updatedCount++;
+        }
+      }
+    }
+
+    if (updates.length > 0) {
+      await this.attendanceModel.bulkWrite(updates, { ordered: false });
+    }
+
+    return { updated: updatedCount };
   }
 
   async exportAttendanceToExcel(filter?: AttendanceFilterDto) {

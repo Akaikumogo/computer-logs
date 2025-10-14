@@ -15,6 +15,7 @@ import {
   Sse,
   MessageEvent,
 } from '@nestjs/common';
+import { CacheTTL } from '@nestjs/cache-manager';
 import { Response } from 'express';
 import { ScheduleService } from './schedule.service';
 import {
@@ -112,6 +113,7 @@ export class ScheduleController {
   // ==================== ATTENDANCE MANAGEMENT ====================
 
   @Get('attendance/today/:employeeId')
+  @CacheTTL(0)
   @ApiOperation({
     summary: 'Bugungi davomat',
     description: "Xodimning bugungi davomat ma'lumotlari",
@@ -119,11 +121,21 @@ export class ScheduleController {
   @ApiParam({ name: 'employeeId', description: 'Xodim ID si' })
   @ApiResponse({ status: 200, description: "Bugungi davomat ma'lumotlari" })
   @ApiResponse({ status: 404, description: 'Xodim topilmadi' })
-  async getTodayAttendance(@Param('employeeId') employeeId: string) {
+  async getTodayAttendance(
+    @Param('employeeId') employeeId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate',
+    );
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return this.scheduleService.getTodayAttendance(employeeId);
   }
 
   @Get('attendance/employee/:employeeId')
+  @CacheTTL(0)
   @ApiOperation({
     summary: 'Xodim davomat tarixi',
     description: 'Xodimning davomat tarixi',
@@ -140,7 +152,14 @@ export class ScheduleController {
   async getEmployeeAttendance(
     @Param('employeeId') employeeId: string,
     @Query() filters: AttendanceFilterDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate',
+    );
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return this.scheduleService.getEmployeeAttendance(employeeId, filters);
   }
 
@@ -175,6 +194,7 @@ export class ScheduleController {
   // ==================== SCHEDULE VIEWS ====================
 
   @Get('daily/:date')
+  @CacheTTL(0)
   @ApiOperation({
     summary: 'Kunlik jadval',
     description:
@@ -189,12 +209,20 @@ export class ScheduleController {
   @ApiResponse({ status: 200, description: "Kunlik jadval ma'lumotlari" })
   async getDailySchedule(
     @Param('date') date: string,
+    @Res({ passthrough: true }) res: Response,
     @Query('locationName') locationName?: string,
   ) {
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate',
+    );
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return this.scheduleService.getDailySchedule(date, locationName);
   }
 
   @Get('monthly/:year/:month')
+  @CacheTTL(0)
   @ApiOperation({
     summary: 'Oylik jadval',
     description:
@@ -211,12 +239,20 @@ export class ScheduleController {
   async getMonthlySchedule(
     @Param('year') year: number,
     @Param('month') month: number,
+    @Res({ passthrough: true }) res: Response,
     @Query('locationName') locationName?: string,
   ) {
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate',
+    );
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return this.scheduleService.getMonthlySchedule(year, month, locationName);
   }
 
   @Get('yearly/:year')
+  @CacheTTL(0)
   @ApiOperation({
     summary: 'Yillik jadval',
     description:
@@ -231,8 +267,15 @@ export class ScheduleController {
   @ApiResponse({ status: 200, description: "Yillik jadval ma'lumotlari" })
   async getYearlySchedule(
     @Param('year') year: number,
+    @Res({ passthrough: true }) res: Response,
     @Query('locationName') locationName?: string,
   ) {
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate',
+    );
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return this.scheduleService.getYearlySchedule(year, locationName);
   }
 

@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/require-await */
 import { Module } from '@nestjs/common';
-import { CacheModule } from '@nestjs/cache-manager';
-import { APP_INTERCEPTOR } from '@nestjs/core';
-import { CacheInterceptor } from '@nestjs/cache-manager';
+// Cache disabled per request: removed CacheModule and CacheInterceptor
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ComputersModule } from './computers/computers.module';
@@ -22,11 +20,7 @@ import configuration from './config/configuration';
       isGlobal: true,
       load: [configuration],
     }),
-    CacheModule.register({
-      isGlobal: true,
-      ttl: 5 * 60 * 1000,
-      max: 1000,
-    }),
+    // CacheModule removed to disable response caching
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -51,11 +45,6 @@ import configuration from './config/configuration';
     DashboardModule,
     LocationModule,
   ],
-  providers: [
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: CacheInterceptor,
-    },
-  ],
+  providers: [],
 })
 export class AppModule {}
