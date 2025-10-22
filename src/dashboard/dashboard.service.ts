@@ -688,7 +688,9 @@ export class DashboardService {
 
   // Maintenance: normalize late statuses to only first IN per employee per day
   async fixLateStatus(startDateStr?: string, endDateStr?: string) {
-    const start = startDateStr ? new Date(startDateStr) : new Date('2000-01-01');
+    const start = startDateStr
+      ? new Date(startDateStr)
+      : new Date('2000-01-01');
     start.setHours(0, 0, 0, 0);
     const end = endDateStr ? new Date(endDateStr) : new Date();
     end.setHours(23, 59, 59, 999);
@@ -716,12 +718,15 @@ export class DashboardService {
       const key = `${a.employeeId.toString()}__${dayKey}`;
 
       const workStart = new Date(d);
-      workStart.setHours(8, 0, 0, 0); // 08:00 as start
+      workStart.setHours(9, 0, 0, 0); // 09:00 as start
 
       if (!firstInMap.has(key)) {
         // This is the first IN of the day for the employee
         firstInMap.set(key, (a as any)._id.toString());
-        const desiredStatus = a.timestamp > workStart ? AttendanceStatus.LATE : AttendanceStatus.NORMAL;
+        const desiredStatus =
+          a.timestamp > workStart
+            ? AttendanceStatus.LATE
+            : AttendanceStatus.NORMAL;
         if (a.status !== desiredStatus) {
           updates.push({
             updateOne: {

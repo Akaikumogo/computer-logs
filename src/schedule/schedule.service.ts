@@ -352,7 +352,7 @@ export class ScheduleService {
 
       // Kechikish tekshirish
       const workStartTime = new Date(today);
-      workStartTime.setHours(8, 0, 0, 0);
+      workStartTime.setHours(9, 0, 0, 0);
       if (checkIns[0].timestamp > workStartTime) {
         status = ScheduleAttendanceStatus.LATE;
       }
