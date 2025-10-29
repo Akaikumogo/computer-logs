@@ -10,6 +10,8 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -49,6 +51,13 @@ export class ScheduleService {
     private locationService: LocationService,
     private snapshotService: SnapshotService,
     private readonly gateway: ScheduleGateway,
+    @Inject(
+      forwardRef(() => {
+        const module = require('../telegram/telegram-bot.service');
+        return module.TelegramBotService;
+      }),
+    )
+    private telegramBotService?: any,
   ) {}
 
   // ==================== CHECK IN/OUT OPERATIONS ====================
@@ -129,6 +138,17 @@ export class ScheduleService {
     });
     this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
     this.gateway.emitDailyScheduleChanged({ dateISO });
+
+    // Telegram habar yuborish
+    if (this.telegramBotService) {
+      this.telegramBotService
+        .sendCheckInNotification(employeeId)
+        .catch((err: any) => {
+          this.logger.warn(
+            `Telegram check-in notification yuborishda xatolik: ${err.message}`,
+          );
+        });
+    }
 
     return {
       id: savedAttendance._id,
@@ -233,6 +253,17 @@ export class ScheduleService {
     });
     this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
     this.gateway.emitDailyScheduleChanged({ dateISO });
+
+    // Telegram habar yuborish
+    if (this.telegramBotService) {
+      this.telegramBotService
+        .sendCheckOutNotification(employeeId)
+        .catch((err: any) => {
+          this.logger.warn(
+            `Telegram check-out notification yuborishda xatolik: ${err.message}`,
+          );
+        });
+    }
 
     return {
       id: savedAttendance._id,

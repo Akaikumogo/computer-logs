@@ -75,7 +75,6 @@ Yoki quyidagi tugmalardan foydalaning:
           keyboard: [
             [{ text: '🔐 Login' }],
             [{ text: "📊 Bugungi ma'lumotim" }],
-            [{ text: '⏰ Kirish qilish' }, { text: '🚪 Chiqish qilish' }],
           ],
           resize_keyboard: true,
         },
@@ -103,10 +102,6 @@ Yoki quyidagi tugmalardan foydalaning:
         );
       } else if (text === "📊 Bugungi ma'lumotim") {
         await this.handleTodayInfo(chatId);
-      } else if (text === '⏰ Kirish qilish') {
-        await this.handleCheckIn(chatId);
-      } else if (text === '🚪 Chiqish qilish') {
-        await this.handleCheckOut(chatId);
       }
     });
   }
@@ -164,10 +159,7 @@ Yoki quyidagi tugmalardan foydalaning:
         `✅ Muvaffaqiyatli login qildingiz!\n\n👤 Xodim: ${employee.fullName}\n📋 Bo'lim: ${employee.department}\n💼 Lavozim: ${employee.position}\n\nEndi quyidagi funksiyalardan foydalanishingiz mumkin:`,
         {
           reply_markup: {
-            keyboard: [
-              [{ text: "📊 Bugungi ma'lumotim" }],
-              [{ text: '⏰ Kirish qilish' }, { text: '🚪 Chiqish qilish' }],
-            ],
+            keyboard: [[{ text: "📊 Bugungi ma'lumotim" }]],
             resize_keyboard: true,
           },
         },
@@ -231,88 +223,42 @@ ${statusText}
     }
   }
 
-  private async handleCheckIn(chatId: number) {
+  // Check-in va check-out uchun Telegram habar yuborish metodlari
+  async sendCheckInNotification(employeeId: string) {
     try {
-      const session = this.userSessions.get(chatId);
-      if (!session) {
-        await this.bot!.sendMessage(
-          chatId,
-          '❌ Avval login qilishingiz kerak. /start tugmasini bosing.',
-        );
-        return;
-      }
+      if (!this.bot) return;
 
-      const employee = await this.employeeModel.findById(session.employeeId);
-      if (!employee) {
-        await this.bot!.sendMessage(chatId, "❌ Xodim ma'lumotlari topilmadi.");
-        return;
-      }
+      const employee = await this.employeeModel.findById(employeeId);
+      if (!employee || !employee.telegramChatId) return;
 
-      // Check-in qilish
-      const result = await this.scheduleService.checkIn({
-        employeeId: session.employeeId,
-        type: AttendanceType.IN,
-        locationName: employee.primaryLocationName || 'default',
-        device: 'Telegram Bot',
-        notes: 'Telegram bot orqali kirish',
-      });
+      const now = new Date();
+      const message = `✅ Siz kirish qildingiz!\n\n📅 Sana: ${now.toLocaleDateString('uz-UZ')}\n⏰ Vaqt: ${now.toLocaleTimeString('uz-UZ')}`;
 
-      const statusEmoji = result.status === 'late' ? '⚠️' : '✅';
-      const message = `${statusEmoji} Kirish muvaffaqiyatli qayd qilindi!
-
-📅 Sana: ${new Date(result.timestamp).toLocaleDateString('uz-UZ')}
-⏰ Vaqt: ${new Date(result.timestamp).toLocaleTimeString('uz-UZ')}
-📍 Manzil: ${result.location?.address || "Noma'lum"}
-${result.status === 'late' ? '⚠️ Kechikkan kirish!' : '✅ Vaqtida kirish!'}`;
-
-      await this.bot!.sendMessage(chatId, message);
-    } catch (error: any) {
-      this.logger.error('Check-in xatolik:', error);
-      const errorMessage =
-        error.message || 'Kirish qilishda xatolik yuz berdi.';
-      await this.bot!.sendMessage(chatId, `❌ ${errorMessage}`);
+      await this.bot.sendMessage(employee.telegramChatId, message);
+    } catch (error) {
+      this.logger.error(
+        `Check-in notification yuborishda xatolik (employeeId: ${employeeId}):`,
+        error,
+      );
     }
   }
 
-  private async handleCheckOut(chatId: number) {
+  async sendCheckOutNotification(employeeId: string) {
     try {
-      const session = this.userSessions.get(chatId);
-      if (!session) {
-        await this.bot!.sendMessage(
-          chatId,
-          '❌ Avval login qilishingiz kerak. /start tugmasini bosing.',
-        );
-        return;
-      }
+      if (!this.bot) return;
 
-      const employee = await this.employeeModel.findById(session.employeeId);
-      if (!employee) {
-        await this.bot!.sendMessage(chatId, "❌ Xodim ma'lumotlari topilmadi.");
-        return;
-      }
+      const employee = await this.employeeModel.findById(employeeId);
+      if (!employee || !employee.telegramChatId) return;
 
-      // Check-out qilish
-      const result = await this.scheduleService.checkOut({
-        employeeId: session.employeeId,
-        type: AttendanceType.OUT,
-        locationName: employee.primaryLocationName || 'default',
-        device: 'Telegram Bot',
-        notes: 'Telegram bot orqali chiqish',
-      });
+      const now = new Date();
+      const message = `✅ Siz chiqish qildingiz!\n\n📅 Sana: ${now.toLocaleDateString('uz-UZ')}\n⏰ Vaqt: ${now.toLocaleTimeString('uz-UZ')}`;
 
-      const message = `✅ Chiqish muvaffaqiyatli qayd qilindi!
-
-📅 Sana: ${new Date(result.timestamp).toLocaleDateString('uz-UZ')}
-⏰ Vaqt: ${new Date(result.timestamp).toLocaleTimeString('uz-UZ')}
-📍 Manzil: ${result.location?.address || "Noma'lum"}
-${result.status === 'early' ? '⚠️ Erta chiqish!' : '✅ Vaqtida chiqish!'}`;
-
-      await this.bot!.sendMessage(chatId, message);
-    } catch (error: any) {
-      this.logger.error('Check-out xatolik:', error);
-      const errorMessage =
-        error.message || 'Chiqish qilishda xatolik yuz berdi.';
-      await this.bot!.sendMessage(chatId, `❌ ${errorMessage}`);
+      await this.bot.sendMessage(employee.telegramChatId, message);
+    } catch (error) {
+      this.logger.error(
+        `Check-out notification yuborishda xatolik (employeeId: ${employeeId}):`,
+        error,
+      );
     }
   }
 

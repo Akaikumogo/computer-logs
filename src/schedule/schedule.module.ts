@@ -12,6 +12,7 @@ import { Employee, EmployeeSchema } from '../schemas/employee.schema';
 import { Fingerprint, FingerprintSchema } from '../schemas/fingerprint.schema';
 import { AuthModule } from '../auth/auth.module';
 import { LocationModule } from '../location/location.module';
+import { TelegramBotModule } from '../telegram/telegram-bot.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { LocationModule } from '../location/location.module';
     ]),
     AuthModule,
     LocationModule,
+    TelegramBotModule,
   ],
   controllers: [
     ScheduleController,
