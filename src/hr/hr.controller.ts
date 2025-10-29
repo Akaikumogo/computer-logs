@@ -906,6 +906,101 @@ export class HrController {
     return this.hrService.createUserAccountForEmployee(employeeId);
   }
 
+  // Barcha employee'lar uchun user account yaratish (GET - bot uchun)
+  @Get('employees/generate-user-accounts')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Barcha employee\'lar uchun user account generate qilish (GET)',
+    description:
+      'GET request yuborilishi bilan barcha user account\'i bo\'lmagan employee\'lar uchun avtomatik user account yaratadi. Login = tabRaqami, password = avtomatik generate qilinadi. Bot uchun mo\'ljallangan.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User accounts generated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        createdCount: { type: 'number' },
+        skippedCount: { type: 'number' },
+        totalProcessed: { type: 'number' },
+        errors: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              employeeId: { type: 'string' },
+              error: { type: 'string' },
+            },
+          },
+        },
+        results: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              employeeId: { type: 'string' },
+              login: { type: 'string' },
+              password: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  generateUserAccounts() {
+    return this.hrService.bulkCreateUserAccounts();
+  }
+
+  // Barcha employee'lar uchun user account yaratish (bulk - POST)
+  @Post('employees/bulk-create-user-accounts')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Barcha employee\'lar uchun user account yaratish (POST)',
+    description:
+      'Barcha user account\'i bo\'lmagan employee\'lar uchun avtomatik user account yaratadi. Login = tabRaqami, password = avtomatik generate qilinadi.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Bulk user account creation completed',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        createdCount: { type: 'number' },
+        skippedCount: { type: 'number' },
+        totalProcessed: { type: 'number' },
+        errors: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              employeeId: { type: 'string' },
+              error: { type: 'string' },
+            },
+          },
+        },
+        results: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              employeeId: { type: 'string' },
+              login: { type: 'string' },
+              password: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  bulkCreateUserAccounts() {
+    return this.hrService.bulkCreateUserAccounts();
+  }
+
   @Get('employees/credentials')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)

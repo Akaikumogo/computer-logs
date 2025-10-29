@@ -448,17 +448,20 @@ export class HrService {
     const password = this.generatePassword();
 
     try {
-      // User yaratish
+      // User yaratish (email field'ini qo'shmaymiz - MongoDB'da email unique index muammosi bo'lishi mumkin)
       const hashedPassword = await bcrypt.hash(password, 10);
       const newUser = await this.userModel.create({
         username,
         password: hashedPassword,
         role: UserRole.USER,
         isActive: true,
+        // email field'ini qo'shmaslik - schema'da email yo'q va MongoDB'da unique index muammosi bo'lishi mumkin
       });
 
-      // Employee'ni yangilash (ObjectId tipini moslashtirish)
-      employee.userId = new Types.ObjectId((newUser._id as any).toString());
+      // Employee'ni yangilash
+      // Mongoose Document'da userId field'i MongooseSchema.Types.ObjectId tipida
+      // newUser._id allaqachon to'g'ri tipda, faqat cast qilish kerak
+      (employee as any).userId = newUser._id;
       employee.username = username;
       employee.tempPassword = password; // Temp password sifatida saqlash
       await employee.save();
@@ -479,6 +482,106 @@ export class HrService {
       }
       throw new BadRequestException(
         `User account creation failed: ${error.message}`,
+      );
+    }
+  }
+
+  // Barcha employee'lar uchun user account yaratish (bulk)
+  async bulkCreateUserAccounts() {
+    try {
+      // User account'i yo'q bo'lgan barcha employee'larni topish
+      const employeesWithoutAccounts = await this.employeeModel
+        .find({
+          $or: [{ userId: { $exists: false } }, { userId: null }],
+          isDeleted: false,
+          status: 'active',
+          tabRaqami: { $exists: true, $ne: null },
+        })
+        .exec();
+
+      if (employeesWithoutAccounts.length === 0) {
+        return {
+          message: 'User account yaratish uchun employee topilmadi',
+          createdCount: 0,
+          skippedCount: 0,
+          errors: [],
+          results: [],
+        };
+      }
+
+      let createdCount = 0;
+      let skippedCount = 0;
+      const errors: Array<{ employeeId: string; error: string }> = [];
+      const results: Array<{
+        employeeId: string;
+        login: string;
+        password: string;
+      }> = [];
+
+      for (const employee of employeesWithoutAccounts) {
+        try {
+          // TabRaqami unique bo'lishi kerak
+          const existingUser = await this.userModel.findOne({
+            username: employee.tabRaqami,
+          });
+
+          if (existingUser) {
+            skippedCount++;
+            errors.push({
+              employeeId: (employee._id as any).toString(),
+              error: `Username "${employee.tabRaqami}" allaqachon mavjud`,
+            });
+            continue;
+          }
+
+          // Login = tabRaqami
+          const username = employee.tabRaqami;
+          // Password ni generate qilish
+          const password = this.generatePassword();
+
+          // User yaratish (email field'ini qo'shmaymiz - MongoDB'da email unique index muammosi bo'lishi mumkin)
+          const hashedPassword = await bcrypt.hash(password, 10);
+          const newUser = await this.userModel.create({
+            username,
+            password: hashedPassword,
+            role: UserRole.USER,
+            isActive: true,
+            // email field'ini qo'shmaslik - schema'da email yo'q va MongoDB'da unique index muammosi bo'lishi mumkin
+          });
+
+          // Employee'ni yangilash
+          (employee as any).userId = newUser._id;
+          employee.username = username;
+          employee.tempPassword = password;
+          await employee.save();
+
+          createdCount++;
+          results.push({
+            employeeId: (employee._id as any).toString(),
+            login: username,
+            password: password,
+          });
+        } catch (error: any) {
+          skippedCount++;
+          errors.push({
+            employeeId: (employee._id as any).toString(),
+            error: error.message || 'User account yaratishda xatolik',
+          });
+        }
+      }
+
+      return {
+        message: `${createdCount} ta user account muvaffaqiyatli yaratildi`,
+        createdCount,
+        skippedCount,
+        totalProcessed: employeesWithoutAccounts.length,
+        errors,
+        results,
+      };
+    } catch (error) {
+      this.logger.error('Bulk user account yaratishda xatolik:', error);
+      throw new BadRequestException(
+        `Bulk user account yaratishda xatolik: ${error.message}`,
       );
     }
   }

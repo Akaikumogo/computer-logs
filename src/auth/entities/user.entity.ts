@@ -35,3 +35,8 @@ export class User {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+// Email field'i uchun sparse unique index qo'shish
+// Bu MongoDB'da null qiymatlar duplicate key error bermasligi uchun
+// Agar email field'i mavjud bo'lsa, u unique bo'ladi, yo'q bo'lsa ham muammo bo'lmaydi
+UserSchema.index({ email: 1 }, { unique: true, sparse: true });
