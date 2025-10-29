@@ -6,6 +6,7 @@ import { WorkerScheduleController } from './worker-schedule.controller';
 import { ScheduleService } from './schedule.service';
 import { ScheduleGateway } from './schedule.gateway';
 import { SnapshotService } from './snapshot.service';
+import { CronService } from './cron.service';
 import { Attendance, AttendanceSchema } from '../schemas/attendance.schema';
 import { Employee, EmployeeSchema } from '../schemas/employee.schema';
 import { Fingerprint, FingerprintSchema } from '../schemas/fingerprint.schema';
@@ -27,7 +28,7 @@ import { LocationModule } from '../location/location.module';
     PublicScheduleController,
     WorkerScheduleController,
   ],
-  providers: [ScheduleService, SnapshotService, ScheduleGateway],
-  exports: [ScheduleService, SnapshotService, ScheduleGateway],
+  providers: [ScheduleService, SnapshotService, ScheduleGateway, CronService],
+  exports: [ScheduleService, SnapshotService, ScheduleGateway, CronService],
 })
 export class ScheduleModule {}

@@ -104,6 +104,17 @@ export class LocationService {
     };
   }
 
+  async findAllPublic(query: any): Promise<LocationResponseDto[]> {
+    const filter: any = { isDeleted: false, isActive: true };
+
+    const locations = await this.locationModel
+      .find(filter)
+      .sort({ name: 1 })
+      .lean();
+
+    return locations.map((location) => this.mapToResponseDto(location));
+  }
+
   async findOne(id: string): Promise<LocationResponseDto> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException("Noto'g'ri location ID");

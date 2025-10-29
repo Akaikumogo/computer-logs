@@ -29,6 +29,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { SkipAuth } from '../auth/decorators/skip-auth.decorator';
 import { UserRole } from '../auth/entities/user.entity';
 
 @ApiTags('Location Management')
@@ -64,6 +65,20 @@ export class LocationController {
   }
 
   // ==================== READ ====================
+
+  @Get('public')
+  @SkipAuth()
+  @ApiOperation({
+    summary: 'Barcha xodimlar uchun locationlar (Public)',
+    description:
+      'Authentication talab qilmaydigan public endpoint - barcha locationlarni qaytaradi',
+  })
+  @ApiResponse({ status: 200, description: "Barcha locationlar ro'yxati" })
+  async findAllPublic() {
+    const query = {};
+    const locations = await this.locationService.findAllPublic(query);
+    return locations;
+  }
 
   @Get()
   @ApiOperation({

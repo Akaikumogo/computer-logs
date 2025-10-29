@@ -87,6 +87,139 @@ export class ScheduleController {
     return this.scheduleService.checkOut(checkOutDto);
   }
 
+  @Post('attendance/manual-warning')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Ishlamoqda bo'lgan xodimlarga qo'lda warning berish",
+    description:
+      "Hozir ishlamoqda bo'lgan lekin chiqish qilmagan xodimlarga warning beradi",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Warning muvaffaqiyatli qo'shildi",
+  })
+  async manuallyMarkActiveEmployeesWarning() {
+    return this.scheduleService.manuallyMarkActiveEmployeesWarning();
+  }
+
+  @Post('attendance/manual-past-warning')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "O'tgan kunlardagi ishlamoqda bo'lgan xodimlarga qo'lda warning berish",
+    description:
+      "Kecha va undan oldingi kunlarda ishlamoqda bo'lgan lekin chiqish qilmagan xodimlarga warning beradi",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "O'tgan kunlar uchun warning muvaffaqiyatli qo'shildi",
+  })
+  async manuallyMarkPastActiveEmployeesWarning() {
+    return this.scheduleService.manuallyMarkPastActiveEmployeesWarning();
+  }
+
+  // ==================== WARNING MANAGEMENT ====================
+
+  @Get('warnings/all')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Barcha warning'larni olish",
+    description: "Barcha warning'li xodimlarni sanasi bilan ko'rsatadi",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Barcha warning'lar muvaffaqiyatli olindi",
+  })
+  async getAllWarnings() {
+    return this.scheduleService.getAllWarningsWithDetails();
+  }
+
+  @Get('warnings/date-range')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Belgilangan sana oralig'idagi warning'larni olish",
+    description: "Belgilangan sana oralig'ida warning'li xodimlarni ko'rsatadi",
+  })
+  @ApiQuery({
+    name: 'startDate',
+    description: 'Boshlanish sanasi (YYYY-MM-DD)',
+  })
+  @ApiQuery({ name: 'endDate', description: 'Tugash sanasi (YYYY-MM-DD)' })
+  @ApiResponse({
+    status: 200,
+    description: "Sana oralig'idagi warning'lar muvaffaqiyatli olindi",
+  })
+  async getWarningsByDateRange(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    return this.scheduleService.getWarningsByDateRange(startDate, endDate);
+  }
+
+  @Delete('warnings/employee/:employeeId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Xodimning warning'larini o'chirish",
+    description: "Belgilangan xodimning barcha warning'larini o'chiradi",
+  })
+  @ApiParam({ name: 'employeeId', description: 'Xodim ID' })
+  @ApiQuery({
+    name: 'attendanceId',
+    required: false,
+    description: 'Specific attendance ID (optional)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Xodimning warning'lari muvaffaqiyatli o'chirildi",
+  })
+  async removeWarningFromEmployee(
+    @Param('employeeId') employeeId: string,
+    @Query('attendanceId') attendanceId?: string,
+  ) {
+    return this.scheduleService.removeWarningFromEmployee(
+      employeeId,
+      attendanceId,
+    );
+  }
+
+  @Delete('warnings/all')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Barcha warning'larni o'chirish",
+    description: "Barcha xodimlarning barcha warning'larini o'chiradi",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Barcha warning'lar muvaffaqiyatli o'chirildi",
+  })
+  async removeAllWarnings() {
+    return this.scheduleService.removeAllWarnings();
+  }
+
+  // ==================== REAL-TIME WARNING UPDATES ====================
+
+  @Sse('warnings/stream')
+  @ApiOperation({
+    summary: 'Real-time warning updates',
+    description: 'WebSocket orqali real-time warning updates olish',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Real-time warning stream',
+  })
+  getWarningsStream(): Observable<MessageEvent> {
+    return interval(5000).pipe(
+      switchMap(() => from(this.scheduleService.getAllWarningsWithDetails())),
+      map((data) => ({
+        data: JSON.stringify({
+          type: 'warnings_update',
+          timestamp: new Date().toISOString(),
+          ...data,
+        }),
+      })),
+    );
+  }
+
   @Post('attendance/checkinout')
   @SkipAuth()
   @HttpCode(HttpStatus.CREATED)

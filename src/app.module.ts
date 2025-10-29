@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 // Cache disabled per request: removed CacheModule and CacheInterceptor
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule as NestScheduleModule } from '@nestjs/schedule';
 import { ComputersModule } from './computers/computers.module';
 import { HrModule } from './hr/hr.module';
 
@@ -35,6 +36,7 @@ import configuration from './config/configuration';
       }),
       inject: [ConfigService],
     }),
+    NestScheduleModule.forRoot(),
     ComputersModule,
     HrModule,
 

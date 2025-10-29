@@ -1609,6 +1609,42 @@ export class HrController {
     return this.hrService.removeEmployeeFromLocation(employeeId);
   }
 
+  @Post('employees/assign-all-to-location/:locationId')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @ApiOperation({
+    summary: 'Barcha xodimlarni location ga biriktirish',
+    description:
+      'Barcha ishchilarni (faqat o\'chirilmaganlar) belgilangan location ga biriktirish. ADMIN yoki HR rol talab qilinadi.',
+  })
+  @ApiParam({
+    name: 'locationId',
+    description: 'Location ID',
+    example: '68da6b2372a4c0d0df0602e2',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Barcha xodimlar location ga muvaffaqiyatli biriktirildi',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        updatedCount: { type: 'number' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Location topilmadi',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied - ADMIN or HR role required',
+  })
+  assignAllEmployeesToLocation(@Param('locationId') locationId: string) {
+    return this.hrService.assignAllEmployeesToLocation(locationId);
+  }
+
   @Get('monthly-schedule/:year/:month')
   @ApiOperation({
     summary: 'Get monthly schedule for all employees',

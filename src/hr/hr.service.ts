@@ -1371,6 +1371,36 @@ export class HrService {
     return { message: 'Xodim location dan muvaffaqiyatli olib tashlandi' };
   }
 
+  async assignAllEmployeesToLocation(
+    locationId: string,
+  ): Promise<{ message: string; updatedCount: number }> {
+    // Location ni tekshirish
+    const location = await this.locationService.findOne(locationId);
+    if (!location) {
+      throw new NotFoundException('Location topilmadi');
+    }
+
+    // Barcha ishchilarni (faqat o'chirilmaganlar) location ga biriktirish
+    const result = await this.employeeModel.updateMany(
+      { isDeleted: false },
+      {
+        $set: {
+          primaryLocationId: locationId as any,
+          primaryLocationName: location.name,
+        },
+      },
+    );
+
+    this.logger.log(
+      `${result.modifiedCount} ta xodim "${location.name}" location ga biriktirildi`,
+    );
+
+    return {
+      message: `${result.modifiedCount} ta xodim "${location.name}" location ga muvaffaqiyatli biriktirildi`,
+      updatedCount: result.modifiedCount,
+    };
+  }
+
   async getMonthlySchedule(year: number, month: number, locationId?: string) {
     try {
       // Get all active employees

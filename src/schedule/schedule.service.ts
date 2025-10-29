@@ -93,10 +93,10 @@ export class ScheduleService {
       throw new BadRequestException('Bugun allaqachon kirish qayd qilingan');
     }
 
-    // Status aniqlash (8:00 dan keyin = late)
+    // Status aniqlash (09:00 dan keyin = late)
     const now = new Date();
     const workStartTime = new Date(today);
-    workStartTime.setHours(8, 0, 0, 0);
+    workStartTime.setHours(9, 0, 0, 0);
 
     let status = AttendanceStatus.NORMAL;
     if (now > workStartTime) {
@@ -559,6 +559,413 @@ export class ScheduleService {
       year,
       monthlyData,
     };
+  }
+
+  // ==================== MANUAL WARNING SYSTEM ====================
+
+  async manuallyMarkPastActiveEmployeesWarning() {
+    this.logger.log('🔄 Manually marking past active employees with warning');
+
+    try {
+      // Kecha va undan oldingi kunlarni tekshirish
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(0, 0, 0, 0);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Kecha va undan oldingi kunlarda check-in qilgan lekin check-out qilmagan xodimlarni topish
+      const pastActiveEmployees = await this.attendanceModel.aggregate([
+        {
+          $match: {
+            timestamp: { $gte: yesterday, $lt: today },
+            type: AttendanceType.IN,
+            isDeleted: false,
+            hasWarning: { $ne: true }, // Faqat warning berilmaganlar
+          },
+        },
+        {
+          $group: {
+            _id: '$employeeId',
+            checkIns: { $push: '$$ROOT' },
+          },
+        },
+        {
+          $lookup: {
+            from: 'attendances',
+            let: { empId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$employeeId', '$$empId'] },
+                      { $gte: ['$timestamp', yesterday] },
+                      { $lt: ['$timestamp', today] },
+                      { $eq: ['$type', AttendanceType.OUT] },
+                      { $eq: ['$isDeleted', false] },
+                    ],
+                  },
+                },
+              },
+            ],
+            as: 'checkOuts',
+          },
+        },
+        {
+          $match: {
+            $expr: { $eq: [{ $size: '$checkOuts' }, 0] }, // Check-out qilmaganlar
+          },
+        },
+      ]);
+
+      this.logger.log(
+        `📊 Found ${pastActiveEmployees.length} past employees still active`,
+      );
+
+      let pastWarningCount = 0;
+
+      for (const employeeData of pastActiveEmployees) {
+        const employeeId = employeeData._id;
+        const checkIns = employeeData.checkIns;
+
+        // Eng oxirgi check-in ni olish
+        const latestCheckIn = checkIns.sort(
+          (a, b) => b.timestamp - a.timestamp,
+        )[0];
+
+        // Past warning ma'lumotlarini yangilash
+        await this.attendanceModel.updateOne(
+          { _id: latestCheckIn._id },
+          {
+            $set: {
+              hasWarning: true,
+              warningReason:
+                "O'tgan kunlarda ishlamoqda bo'lgan - manual warning",
+              warningTimestamp: new Date(),
+            },
+          },
+        );
+
+        pastWarningCount++;
+
+        this.logger.log(
+          `⚠️  Past warning added for employee ${employeeId} - was active in past days`,
+        );
+      }
+
+      this.logger.log(
+        `✅ Manual past warning completed: ${pastWarningCount} employees marked with past warning`,
+      );
+      return { success: true, pastWarningCount };
+    } catch (error) {
+      this.logger.error(
+        '❌ Error in manuallyMarkPastActiveEmployeesWarning:',
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async manuallyMarkActiveEmployeesWarning() {
+    this.logger.log('🔄 Manually marking active employees with warning');
+
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Bugun check-in qilgan lekin check-out qilmagan xodimlarni topish
+      const activeEmployees = await this.attendanceModel.aggregate([
+        {
+          $match: {
+            timestamp: { $gte: today, $lt: tomorrow },
+            type: AttendanceType.IN,
+            isDeleted: false,
+          },
+        },
+        {
+          $group: {
+            _id: '$employeeId',
+            checkIns: { $push: '$$ROOT' },
+          },
+        },
+        {
+          $lookup: {
+            from: 'attendances',
+            let: { empId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$employeeId', '$$empId'] },
+                      { $gte: ['$timestamp', today] },
+                      { $lt: ['$timestamp', tomorrow] },
+                      { $eq: ['$type', AttendanceType.OUT] },
+                      { $eq: ['$isDeleted', false] },
+                    ],
+                  },
+                },
+              },
+            ],
+            as: 'checkOuts',
+          },
+        },
+        {
+          $match: {
+            $expr: { $eq: [{ $size: '$checkOuts' }, 0] }, // Check-out qilmaganlar
+          },
+        },
+      ]);
+
+      this.logger.log(
+        `📊 Found ${activeEmployees.length} employees still active`,
+      );
+
+      let warningCount = 0;
+
+      for (const employeeData of activeEmployees) {
+        const employeeId = employeeData._id;
+        const checkIns = employeeData.checkIns;
+
+        // Eng oxirgi check-in ni olish
+        const latestCheckIn = checkIns.sort(
+          (a, b) => b.timestamp - a.timestamp,
+        )[0];
+
+        // Warning ma'lumotlarini yangilash
+        await this.attendanceModel.updateOne(
+          { _id: latestCheckIn._id },
+          {
+            $set: {
+              hasWarning: true,
+              warningReason:
+                'Ish vaqti tugaganidan keyin ham ishlamoqda (Manual)',
+              warningTimestamp: new Date(),
+            },
+          },
+        );
+
+        warningCount++;
+
+        this.logger.log(
+          `⚠️  Warning added for employee ${employeeId} - still active`,
+        );
+      }
+
+      this.logger.log(
+        `✅ Manual warning completed: ${warningCount} employees marked with warning`,
+      );
+      return { success: true, warningCount };
+    } catch (error) {
+      this.logger.error(
+        '❌ Error in manuallyMarkActiveEmployeesWarning:',
+        error,
+      );
+      throw error;
+    }
+  }
+
+  // ==================== WARNING MANAGEMENT ====================
+
+  async getAllWarningsWithDetails() {
+    this.logger.log('🔄 Getting all warnings with employee details');
+
+    try {
+      const warnings = await this.attendanceModel.aggregate([
+        {
+          $match: {
+            hasWarning: true,
+            isDeleted: false,
+          },
+        },
+        {
+          $lookup: {
+            from: 'employees',
+            localField: 'employeeId',
+            foreignField: '_id',
+            as: 'employee',
+          },
+        },
+        {
+          $unwind: '$employee',
+        },
+        {
+          $project: {
+            _id: 1,
+            employeeId: 1,
+            timestamp: 1,
+            type: 1,
+            status: 1,
+            hasWarning: 1,
+            warningReason: 1,
+            warningTimestamp: 1,
+            device: 1,
+            notes: 1,
+            'employee.fullName': 1,
+            'employee.position': 1,
+            'employee.department': 1,
+            'employee.employeeId': 1,
+          },
+        },
+        {
+          $sort: { warningTimestamp: -1 },
+        },
+      ]);
+
+      this.logger.log(`📊 Found ${warnings.length} warnings with details`);
+
+      // Real-time update yuborish
+      this.gateway.emitScheduleChanged({
+        dateISO: new Date().toISOString().split('T')[0],
+        scope: 'daily',
+      });
+
+      return {
+        success: true,
+        totalWarnings: warnings.length,
+        warnings: warnings,
+      };
+    } catch (error) {
+      this.logger.error('❌ Error in getAllWarningsWithDetails:', error);
+      throw error;
+    }
+  }
+
+  async getWarningsByDateRange(startDate: string, endDate: string) {
+    this.logger.log(`🔄 Getting warnings from ${startDate} to ${endDate}`);
+
+    try {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      const warnings = await this.attendanceModel.aggregate([
+        {
+          $match: {
+            timestamp: { $gte: start, $lte: end },
+            hasWarning: true,
+            isDeleted: false,
+          },
+        },
+        {
+          $lookup: {
+            from: 'employees',
+            localField: 'employeeId',
+            foreignField: '_id',
+            as: 'employee',
+          },
+        },
+        {
+          $unwind: '$employee',
+        },
+        {
+          $project: {
+            _id: 1,
+            employeeId: 1,
+            timestamp: 1,
+            type: 1,
+            status: 1,
+            hasWarning: 1,
+            warningReason: 1,
+            warningTimestamp: 1,
+            device: 1,
+            notes: 1,
+            'employee.fullName': 1,
+            'employee.position': 1,
+            'employee.department': 1,
+            'employee.employeeId': 1,
+          },
+        },
+        {
+          $sort: { warningTimestamp: -1 },
+        },
+      ]);
+
+      this.logger.log(`📊 Found ${warnings.length} warnings in date range`);
+
+      return {
+        success: true,
+        totalWarnings: warnings.length,
+        warnings: warnings,
+        dateRange: { startDate, endDate },
+      };
+    } catch (error) {
+      this.logger.error('❌ Error in getWarningsByDateRange:', error);
+      throw error;
+    }
+  }
+
+  async removeWarningFromEmployee(employeeId: string, attendanceId?: string) {
+    this.logger.log(`🔄 Removing warning from employee ${employeeId}`);
+
+    try {
+      let filter: any = {
+        employeeId: new Types.ObjectId(employeeId),
+        hasWarning: true,
+        isDeleted: false,
+      };
+
+      // Agar specific attendance ID berilsa, faqat o'sha attendance'ni update qilish
+      if (attendanceId) {
+        filter._id = new Types.ObjectId(attendanceId);
+      }
+
+      const result = await this.attendanceModel.updateMany(filter, {
+        $unset: {
+          hasWarning: '',
+          warningReason: '',
+          warningTimestamp: '',
+        },
+      });
+
+      this.logger.log(
+        `✅ Warning removed from ${result.modifiedCount} attendance records for employee ${employeeId}`,
+      );
+
+      return {
+        success: true,
+        modifiedCount: result.modifiedCount,
+        message: `Warning removed from ${result.modifiedCount} records`,
+      };
+    } catch (error) {
+      this.logger.error('❌ Error in removeWarningFromEmployee:', error);
+      throw error;
+    }
+  }
+
+  async removeAllWarnings() {
+    this.logger.log('🔄 Removing all warnings from all employees');
+
+    try {
+      const result = await this.attendanceModel.updateMany(
+        { hasWarning: true, isDeleted: false },
+        {
+          $unset: {
+            hasWarning: '',
+            warningReason: '',
+            warningTimestamp: '',
+          },
+        },
+      );
+
+      this.logger.log(
+        `✅ All warnings removed from ${result.modifiedCount} attendance records`,
+      );
+
+      return {
+        success: true,
+        modifiedCount: result.modifiedCount,
+        message: `All warnings removed from ${result.modifiedCount} records`,
+      };
+    } catch (error) {
+      this.logger.error('❌ Error in removeAllWarnings:', error);
+      throw error;
+    }
   }
 
   // ==================== DASHBOARD & STATISTICS ====================
@@ -1090,12 +1497,12 @@ export class ScheduleService {
       throw new NotFoundException('Xodim topilmadi');
     }
 
-    // Status aniqlash (8:00 dan keyin = late)
+    // Status aniqlash (09:00 dan keyin = late)
     const now = new Date();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const workStartTime = new Date(today);
-    workStartTime.setHours(8, 0, 0, 0);
+    workStartTime.setHours(9, 0, 0, 0);
 
     let status = AttendanceStatus.NORMAL;
     if (now > workStartTime) {

@@ -54,4 +54,41 @@ export class ScheduleGateway implements OnGatewayInit {
       this.logger.error('Failed to emit schedule.daily.changed', err as Error);
     }
   }
+
+  emitWarningAdded(payload: {
+    employeeId: string;
+    employeeName: string;
+    warningReason: string;
+    timestamp: Date;
+  }) {
+    try {
+      this.server.emit('warning.added', payload);
+    } catch (err) {
+      this.logger.error('Failed to emit warning.added', err as Error);
+    }
+  }
+
+  emitWarningRemoved(payload: {
+    employeeId: string;
+    employeeName: string;
+    timestamp: Date;
+  }) {
+    try {
+      this.server.emit('warning.removed', payload);
+    } catch (err) {
+      this.logger.error('Failed to emit warning.removed', err as Error);
+    }
+  }
+
+  emitWarningsUpdated(payload: {
+    totalWarnings: number;
+    warnings: any[];
+    timestamp: Date;
+  }) {
+    try {
+      this.server.emit('warnings.updated', payload);
+    } catch (err) {
+      this.logger.error('Failed to emit warnings.updated', err as Error);
+    }
+  }
 }
