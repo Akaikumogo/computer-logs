@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { LocationModule } from './location/location.module';
+import { TelegramBotModule } from './telegram/telegram-bot.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -46,6 +47,7 @@ import configuration from './config/configuration';
     ScheduleModule,
     DashboardModule,
     LocationModule,
+    TelegramBotModule,
   ],
   providers: [],
 })

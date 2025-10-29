@@ -10,6 +10,7 @@ import { Location, LocationSchema } from '../schemas/location.schema';
 import { Attendance, AttendanceSchema } from '../schemas/attendance.schema';
 import { AuthModule } from '../auth/auth.module';
 import { LocationModule } from '../location/location.module';
+import { User, UserSchema } from '../auth/entities/user.entity';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { LocationModule } from '../location/location.module';
       { name: Department.name, schema: DepartmentSchema },
       { name: Location.name, schema: LocationSchema },
       { name: Attendance.name, schema: AttendanceSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     AuthModule,
     LocationModule,

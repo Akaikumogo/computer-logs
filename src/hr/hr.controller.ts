@@ -865,6 +865,47 @@ export class HrController {
 
   // ==================== USER ACCOUNT MANAGEMENT ====================
 
+  // Eski employee'lar uchun user account yaratish
+  @Post('employees/:employeeId/create-user-account')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.HR)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create user account for existing employee',
+    description:
+      'Creates a user account for an employee that does not have one yet. Login will be tabRaqami, password will be auto-generated.',
+  })
+  @ApiParam({
+    name: 'employeeId',
+    description: 'Employee ID',
+    type: String,
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'User account created successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        employeeId: { type: 'string' },
+        login: { type: 'string' },
+        password: { type: 'string' },
+        note: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Employee not found',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Employee already has a user account',
+  })
+  createUserAccount(@Param('employeeId') employeeId: string) {
+    return this.hrService.createUserAccountForEmployee(employeeId);
+  }
+
   @Get('employees/credentials')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
@@ -1615,7 +1656,7 @@ export class HrController {
   @ApiOperation({
     summary: 'Barcha xodimlarni location ga biriktirish',
     description:
-      'Barcha ishchilarni (faqat o\'chirilmaganlar) belgilangan location ga biriktirish. ADMIN yoki HR rol talab qilinadi.',
+      "Barcha ishchilarni (faqat o'chirilmaganlar) belgilangan location ga biriktirish. ADMIN yoki HR rol talab qilinadi.",
   })
   @ApiParam({
     name: 'locationId',
@@ -1648,7 +1689,8 @@ export class HrController {
   @Get('monthly-schedule/:year/:month')
   @ApiOperation({
     summary: 'Get monthly schedule for all employees',
-    description: 'Retrieve monthly work schedule with work/rest days for all active employees',
+    description:
+      'Retrieve monthly work schedule with work/rest days for all active employees',
   })
   @ApiParam({
     name: 'year',
@@ -1683,7 +1725,8 @@ export class HrController {
   @Get('employees/:employeeId/attendance/:year/:month')
   @ApiOperation({
     summary: 'Get employee daily attendance for a month',
-    description: 'Retrieve daily check-in/check-out times and work hours for an employee',
+    description:
+      'Retrieve daily check-in/check-out times and work hours for an employee',
   })
   @ApiParam({
     name: 'employeeId',
@@ -1717,7 +1760,8 @@ export class HrController {
   @Get('employees/:employeeId/attendance/:year/:month/:day')
   @ApiOperation({
     summary: 'Get employee daily attendance for a specific day',
-    description: 'Retrieve check-in/check-out times and work hours for a specific day',
+    description:
+      'Retrieve check-in/check-out times and work hours for a specific day',
   })
   @ApiParam({
     name: 'employeeId',
@@ -1751,6 +1795,11 @@ export class HrController {
     @Param('month') month: number,
     @Param('day') day: number,
   ) {
-    return this.hrService.getEmployeeDailyAttendance(employeeId, year, month, day);
+    return this.hrService.getEmployeeDailyAttendance(
+      employeeId,
+      year,
+      month,
+      day,
+    );
   }
 }

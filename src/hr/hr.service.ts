@@ -25,7 +25,8 @@ import { LocationService } from '../location/location.service';
 import { Position } from '../schemas/position.schema';
 import { Department } from '../schemas/department.schema';
 import { AuthService } from '../auth/auth.service';
-// import { UserRole } from '../auth/entities/user.entity';
+import { User, UserRole } from '../auth/entities/user.entity';
+import * as bcrypt from 'bcryptjs';
 import { GetEmployeesQueryDto } from './dto/get-employees-query.dto';
 import {
   BulkUpdateEmployeesDto,
@@ -50,6 +51,7 @@ export class HrService {
     @InjectModel(Location.name) private locationModel: Model<Location>,
     @InjectModel(Attendance.name)
     private attendanceModel: Model<Attendance>,
+    @InjectModel(User.name) private userModel: Model<User>,
     private authService: AuthService,
     private locationService: LocationService,
   ) {}
@@ -245,6 +247,7 @@ export class HrService {
         .sort(sort)
         .skip(skip)
         .limit(limit)
+        .populate('userId', 'username')
         .lean()
         .exec(),
       this.employeeModel.countDocuments(filter).exec(),
@@ -270,8 +273,15 @@ export class HrService {
       ...(hasWorkplace !== undefined && { hasWorkplace }),
     };
 
+    // Add login (tabRaqami) and password (tempPassword) to each employee
+    const employeesWithCredentials = employees.map((emp: any) => ({
+      ...emp,
+      login: emp.tabRaqami || null, // Login = tabRaqami
+      password: emp.tempPassword || null, // Password = tempPassword (if exists)
+    }));
+
     return {
-      data: employees,
+      data: employeesWithCredentials,
       meta: {
         total,
         page,
@@ -413,6 +423,64 @@ export class HrService {
       newPassword,
       note: 'Employee must change password on next login',
     };
+  }
+
+  // Eski employee'lar uchun user account yaratish (login = tabRaqami)
+  async createUserAccountForEmployee(employeeId: string) {
+    const employee = await this.employeeModel
+      .findOne({ _id: new Types.ObjectId(employeeId), isDeleted: false })
+      .exec();
+    if (!employee) throw new NotFoundException('Employee topilmadi');
+
+    if (employee.userId) {
+      throw new ConflictException('Employee already has a user account');
+    }
+
+    if (!employee.tabRaqami) {
+      throw new BadRequestException(
+        'Employee must have tabRaqami to create user account',
+      );
+    }
+
+    // Login = tabRaqami
+    const username = employee.tabRaqami;
+    // Password ni generate qilish
+    const password = this.generatePassword();
+
+    try {
+      // User yaratish
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newUser = await this.userModel.create({
+        username,
+        password: hashedPassword,
+        role: UserRole.USER,
+        isActive: true,
+      });
+
+      // Employee'ni yangilash (ObjectId tipini moslashtirish)
+      employee.userId = new Types.ObjectId((newUser._id as any).toString());
+      employee.username = username;
+      employee.tempPassword = password; // Temp password sifatida saqlash
+      await employee.save();
+
+      return {
+        message: 'User account created successfully',
+        employeeId: employee._id,
+        login: username,
+        password: password,
+        note: 'Employee can login with tabRaqami and this password',
+      };
+    } catch (error: any) {
+      if (error.code === 11000) {
+        // Duplicate username
+        throw new ConflictException(
+          `Username "${username}" already exists. Please update employee tabRaqami.`,
+        );
+      }
+      throw new BadRequestException(
+        `User account creation failed: ${error.message}`,
+      );
+    }
   }
 
   async addFingerprint(employeeId: string, templateBase64: string) {

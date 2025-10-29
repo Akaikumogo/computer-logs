@@ -7,6 +7,7 @@ export enum UserRole {
   ADMIN = 'admin',
   USER = 'user',
   HR = 'hr',
+  SUPER_ADMIN = 'super_admin',
 }
 
 @Schema({ timestamps: true })

@@ -86,6 +86,10 @@ export class Employee extends Document {
 
   @Prop({ required: false, unique: true, sparse: true })
   fingerNumber?: string;
+
+  // 📱 Telegram bot integration
+  @Prop({ required: false, unique: true, sparse: true })
+  telegramChatId?: number;
 }
 
 export const EmployeeSchema = SchemaFactory.createForClass(Employee);
