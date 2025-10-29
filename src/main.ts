@@ -11,9 +11,28 @@ const compression = require('compression');
 const helmet = require('helmet');
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule, {
+    cors: {
+      origin: '*', // Barcha origin'lardan ruxsat berish
+      credentials: false, // credentials false bo'lishi kerak origin '*' bilan
+      methods: '*', // Barcha metodlardan ruxsat
+      allowedHeaders: '*', // Barcha header'lardan ruxsat
+      exposedHeaders: '*', // Barcha exposed header'larga ruxsat
+      preflightContinue: false,
+      optionsSuccessStatus: 204,
+    },
+  });
+
+  // Helmet sozlamalari CORS bilan ishlashi uchun
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      contentSecurityPolicy: false, // CORS bilan muammo bo'lsa, false qilish mumkin
+    }),
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   app.use(compression({ threshold: 1024 }));
 
