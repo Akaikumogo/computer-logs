@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TelegramBotService } from './telegram-bot.service';
 import { TelegramBotController } from './telegram-bot.controller';
@@ -14,7 +14,7 @@ import { ScheduleModule } from '../schedule/schedule.module';
       { name: BotConfig.name, schema: BotConfigSchema },
       { name: User.name, schema: UserSchema },
     ]),
-    ScheduleModule,
+    forwardRef(() => ScheduleModule),
   ],
   controllers: [TelegramBotController],
   providers: [TelegramBotService],
