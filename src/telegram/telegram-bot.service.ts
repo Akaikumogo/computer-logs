@@ -17,6 +17,8 @@ export class TelegramBotService implements OnModuleInit {
   private botToken: string | null = null;
   private userSessions: Map<number, { employeeId: string; username: string }> =
     new Map();
+  // Status message tracker for realtime updates
+  private statusMessageByChatId: Map<number, number> = new Map();
 
   constructor(
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
@@ -164,6 +166,11 @@ Yoki quyidagi tugmalardan foydalaning:
           },
         },
       );
+
+      // Create or update realtime status message immediately after login
+      await this.updateStatusMessageForEmployee(
+        (employee._id as any).toString(),
+      );
     } catch (error) {
       this.logger.error('Login xatolik:', error);
       await this.bot!.sendMessage(
@@ -235,6 +242,9 @@ ${statusText}
       const message = `✅ Siz kirish qildingiz!\n\n📅 Sana: ${now.toLocaleDateString('uz-UZ')}\n⏰ Vaqt: ${now.toLocaleTimeString('uz-UZ')}`;
 
       await this.bot.sendMessage(employee.telegramChatId, message);
+
+      // Update realtime status message
+      await this.updateStatusMessageForEmployee(employeeId);
     } catch (error) {
       this.logger.error(
         `Check-in notification yuborishda xatolik (employeeId: ${employeeId}):`,
@@ -254,9 +264,77 @@ ${statusText}
       const message = `✅ Siz chiqish qildingiz!\n\n📅 Sana: ${now.toLocaleDateString('uz-UZ')}\n⏰ Vaqt: ${now.toLocaleTimeString('uz-UZ')}`;
 
       await this.bot.sendMessage(employee.telegramChatId, message);
+
+      // Update realtime status message
+      await this.updateStatusMessageForEmployee(employeeId);
     } catch (error) {
       this.logger.error(
         `Check-out notification yuborishda xatolik (employeeId: ${employeeId}):`,
+        error,
+      );
+    }
+  }
+
+  // Persistent status message updater (creates or edits one pinned-like message)
+  async updateStatusMessageForEmployee(employeeId: string) {
+    try {
+      if (!this.bot) return;
+
+      const employee = await this.employeeModel.findById(employeeId).lean();
+      if (!employee || !employee.telegramChatId) return;
+
+      const attendance = await this.scheduleService.getTodayAttendance(
+        (employee._id as any).toString(),
+      );
+
+      const statusText =
+        attendance.status === 'present'
+          ? '✅ Vaqtida'
+          : attendance.status === 'late'
+            ? '⚠️ Kechikkan'
+            : attendance.status === 'half-day'
+              ? '🟡 Yarim kun'
+              : '❌ Kelmagan';
+
+      const message = `📡 Realtime holat
+
+👤 Xodim: ${employee.fullName}
+📅 Sana: ${new Date().toLocaleDateString('uz-UZ')}
+
+Holat: ${statusText}
+⏰ Kirish: ${attendance.checkInTime || '—'}
+🚪 Chiqish: ${attendance.checkOutTime || '—'}
+⏱️ Ish vaqti: ${
+        attendance.totalWorkHours
+          ? `${Math.round(attendance.totalWorkHours * 100) / 100} soat`
+          : '—'
+      }`;
+
+      const chatId = employee.telegramChatId as unknown as number;
+      const existingMessageId = this.statusMessageByChatId.get(chatId);
+
+      if (existingMessageId) {
+        try {
+          await this.bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: existingMessageId,
+          });
+          return;
+        } catch (editErr) {
+          this.logger.warn(
+            `Status message edit bajarilmadi, yangidan yuboriladi (chatId: ${chatId})`,
+          );
+        }
+      }
+
+      // Create new status message if none or edit failed
+      const sent = await this.bot.sendMessage(chatId, message, {
+        disable_notification: true,
+      });
+      this.statusMessageByChatId.set(chatId, (sent as any).message_id);
+    } catch (error) {
+      this.logger.error(
+        `updateStatusMessageForEmployee xatolik (employeeId: ${employeeId}):`,
         error,
       );
     }
