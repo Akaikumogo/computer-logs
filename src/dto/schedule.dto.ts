@@ -149,6 +149,23 @@ export class FingerAttendanceDto {
   location: string;
 
   @ApiPropertyOptional({
+    description: 'Vaqt (ISO formatida yoki YYYY-MM-DD HH:mm:ss)',
+    example: '2025-01-15 08:30:00',
+  })
+  @IsOptional()
+  @IsDateString()
+  time?: string;
+
+  @ApiPropertyOptional({
+    description: "Turi (in/out) - agar ko'rsatilmasa, avtomatik aniqlanadi",
+    enum: AttendanceType,
+    example: AttendanceType.IN,
+  })
+  @IsOptional()
+  @IsEnum(AttendanceType)
+  type?: AttendanceType;
+
+  @ApiPropertyOptional({
     description: "Qurilma ma'lumoti",
     example: 'Fingerprint Scanner',
   })

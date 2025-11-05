@@ -342,7 +342,7 @@ export class DashboardService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     // Har bir xodim uchun eng birinchi kirish va eng oxirgi chiqishni olish
-    const pipeline = [
+    const pipeline: any[] = [
       {
         $match: {
           timestamp: { $gte: today, $lt: tomorrow },
@@ -351,10 +351,12 @@ export class DashboardService {
         },
       },
       {
+        $sort: { timestamp: 1 }, // Timestamp bo'yicha tartiblash - eng birinchi IN ni olish uchun
+      },
+      {
         $group: {
           _id: '$employeeId',
           firstCheckIn: { $first: '$$ROOT' },
-          lastCheckOut: { $last: '$$ROOT' },
         },
       },
       {

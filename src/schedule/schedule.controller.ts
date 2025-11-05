@@ -226,7 +226,7 @@ export class ScheduleController {
   @ApiOperation({
     summary: 'Barmoq izi orqali kirish/chiqish (Public)',
     description:
-      'Barmoq izi skaner orqali kirish yoki chiqish qayd qiladi - autentifikatsiya talab qilinmaydi',
+      'Barmoq izi skaner orqali kirish yoki chiqish qayd qiladi - autentifikatsiya talab qilinmaydi. Avtomatik aniqlanadi.',
   })
   @ApiBody({ type: FingerAttendanceDto })
   @ApiResponse({
@@ -240,6 +240,29 @@ export class ScheduleController {
   })
   @HttpCode(HttpStatus.CREATED)
   async fingerCheckInOut(@Body() fingerAttendanceDto: FingerAttendanceDto) {
+    return this.scheduleService.fingerCheckInOut(fingerAttendanceDto);
+  }
+
+  @Post('attendance/checkinout2')
+  @SkipAuth()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Barmoq izi orqali kirish/chiqish v2 (Public)',
+    description:
+      "Barmoq izi skaner orqali kirish yoki chiqish qayd qiladi - autentifikatsiya talab qilinmaydi. Vaqt va tur (in/out) ixtiyoriy ravishda ko'rsatilishi mumkin. Agar ko'rsatilmasa, avtomatik aniqlanadi.",
+  })
+  @ApiBody({ type: FingerAttendanceDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Barmoq izi muvaffaqiyatli qayd qilindi',
+  })
+  @ApiResponse({ status: 404, description: 'Barmoq izi topilmadi' })
+  @ApiResponse({
+    status: 400,
+    description: "Barmoq izi noto'g'ri yoki xodim topilmadi",
+  })
+  @HttpCode(HttpStatus.CREATED)
+  async fingerCheckInOut2(@Body() fingerAttendanceDto: FingerAttendanceDto) {
     return this.scheduleService.fingerCheckInOut(fingerAttendanceDto);
   }
 
@@ -708,6 +731,34 @@ export class ScheduleController {
       'Content-Disposition': `attachment; filename=monthly_${y}-${m}.xlsx`,
     });
     res.send(buffer);
+  }
+
+  @Get('attendance/restore-deleted')
+  @ApiOperation({
+    summary: "O'chirilgan davomat yozuvlarini qaytarish",
+    description:
+      'Barcha soft delete qilingan davomat yozuvlarini qaytaradi (isDeleted=false).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: "O'chirilgan davomat yozuvlari qaytarildi",
+  })
+  async restoreDeletedAttendances() {
+    return this.scheduleService.restoreDeletedAttendances();
+  }
+
+  @Get('attendance/fix-disorders')
+  @ApiOperation({
+    summary: "Davomat tartibsizliklarini to'g'irlash",
+    description:
+      "Barcha davomat yozuvlaridagi tartibsizliklarni to'g'irlaydi. Ikki IN ketma-ket bo'lsa, ikkinchisini OUT'ga o'zgartiradi. Ikki OUT ketma-ket bo'lsa, birinchisini o'chiradi.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Davomat tartibsizliklari to'g'irlandi",
+  })
+  async fixAttendanceDisorders() {
+    return this.scheduleService.fixAttendanceDisorders();
   }
 
   @Get('export/yearly')

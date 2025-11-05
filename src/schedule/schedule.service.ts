@@ -17,7 +17,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
   Attendance,
-  AttendanceType,
+  AttendanceType as SchemaAttendanceType,
   AttendanceStatus,
 } from '../schemas/attendance.schema';
 import { Employee } from '../schemas/employee.schema';
@@ -37,6 +37,7 @@ import {
   YearlyScheduleDto,
   AttendanceFilterDto,
   AttendanceStatus as ScheduleAttendanceStatus,
+  AttendanceType,
 } from '../dto/schedule.dto';
 import * as XLSX from 'xlsx';
 
@@ -92,7 +93,7 @@ export class ScheduleService {
       .find({
         employeeId: new Types.ObjectId(employeeId),
         timestamp: { $gte: today },
-        type: AttendanceType.IN,
+        type: SchemaAttendanceType.IN,
         isDeleted: false,
       })
       .sort({ timestamp: -1 });
@@ -1467,12 +1468,13 @@ export class ScheduleService {
           $gte: today,
           $lt: tomorrow,
         },
+        isDeleted: false,
       })
       .sort({ timestamp: -1 });
 
     if (lastTodayAttendance) {
       // Bugun allaqachon davomat qayd qilingan
-      if (lastTodayAttendance.type === AttendanceType.IN) {
+      if (lastTodayAttendance.type === SchemaAttendanceType.IN) {
         // Oxirgi davomat IN bo'lsa, hozir OUT qilamiz
         return this.fingerCheckOut({
           employeeId: (employee._id as Types.ObjectId).toString(),
@@ -1506,8 +1508,9 @@ export class ScheduleService {
     locationName: string;
     device?: string;
     notes?: string;
+    timestamp?: Date;
   }) {
-    const { employeeId, locationName, device, notes } = data;
+    const { employeeId, locationName, device, notes, timestamp } = data;
 
     // Validate location name
     const locationData = await this.locationService.getLocationByName(
@@ -1528,9 +1531,11 @@ export class ScheduleService {
       throw new NotFoundException('Xodim topilmadi');
     }
 
+    // Vaqtni aniqlash - agar berilgan bo'lsa, ishlatamiz, aks holda hozirgi vaqt
+    const now = timestamp || new Date();
+
     // Status aniqlash (09:00 dan keyin = late)
-    const now = new Date();
-    const today = new Date();
+    const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     const workStartTime = new Date(today);
     workStartTime.setHours(9, 0, 0, 0);
@@ -1544,7 +1549,7 @@ export class ScheduleService {
     const attendance = new this.attendanceModel({
       employeeId: new Types.ObjectId(employeeId),
       timestamp: now,
-      type: AttendanceType.IN,
+      type: SchemaAttendanceType.IN,
       status,
       location: attendanceLocationData,
       device,
@@ -1556,6 +1561,16 @@ export class ScheduleService {
     this.logger.log(
       `Xodim ${employee.fullName} kirish qayd qildi - ${status} status bilan`,
     );
+
+    // Realtime
+    const dateISO = now.toISOString().split('T')[0];
+    this.gateway.emitAttendanceChanged({
+      employeeId: (employee._id as any).toString(),
+      dateISO,
+      event: 'checkin',
+    });
+    this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
+    this.gateway.emitDailyScheduleChanged({ dateISO });
 
     return {
       id: savedAttendance._id?.toString(),
@@ -1577,8 +1592,9 @@ export class ScheduleService {
     locationName: string;
     device?: string;
     notes?: string;
+    timestamp?: Date;
   }) {
-    const { employeeId, locationName, device, notes } = data;
+    const { employeeId, locationName, device, notes, timestamp } = data;
 
     // Validate location name
     const locationData = await this.locationService.getLocationByName(
@@ -1599,9 +1615,11 @@ export class ScheduleService {
       throw new NotFoundException('Xodim topilmadi');
     }
 
+    // Vaqtni aniqlash - agar berilgan bo'lsa, ishlatamiz, aks holda hozirgi vaqt
+    const now = timestamp || new Date();
+
     // Status aniqlash (17:00 dan oldin = early)
-    const now = new Date();
-    const today = new Date();
+    const today = new Date(now);
     today.setHours(0, 0, 0, 0);
     const workEndTime = new Date(today);
     workEndTime.setHours(17, 0, 0, 0);
@@ -1615,7 +1633,7 @@ export class ScheduleService {
     const attendance = new this.attendanceModel({
       employeeId: new Types.ObjectId(employeeId),
       timestamp: now,
-      type: AttendanceType.OUT,
+      type: SchemaAttendanceType.OUT,
       status,
       location: attendanceLocationData,
       device,
@@ -1627,7 +1645,17 @@ export class ScheduleService {
     this.logger.log(
       `Xodim ${employee.fullName} chiqish qayd qildi - ${status} status bilan`,
     );
-    //secret
+
+    // Realtime
+    const dateISO = now.toISOString().split('T')[0];
+    this.gateway.emitAttendanceChanged({
+      employeeId: (employee._id as any).toString(),
+      dateISO,
+      event: 'checkout',
+    });
+    this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
+    this.gateway.emitDailyScheduleChanged({ dateISO });
+
     return {
       id: (savedAttendance._id as Types.ObjectId).toString(),
       employeeId: (
@@ -1692,6 +1720,214 @@ export class ScheduleService {
     this.gateway.emitScheduleChanged({ dateISO, scope: 'daily' });
     this.gateway.emitDailyScheduleChanged({ dateISO });
     return { message: "Davomat o'chirildi" };
+  }
+
+  // O'chirilgan davomat yozuvlarini qaytarish
+  async restoreDeletedAttendances() {
+    this.logger.log(
+      "🔄 O'chirilgan davomat yozuvlarini qaytarish boshlandi...",
+    );
+
+    const result = await this.attendanceModel.updateMany(
+      { isDeleted: true },
+      {
+        $set: {
+          isDeleted: false,
+        },
+        $unset: { deletedAt: 1 },
+      },
+    );
+
+    this.logger.log(`✅ ${result.modifiedCount} ta davomat yozuvi qaytarildi`);
+
+    return {
+      success: true,
+      message: "O'chirilgan davomat yozuvlari qaytarildi",
+      restoredCount: result.modifiedCount,
+    };
+  }
+
+  // Davomat tartibsizliklarini to'g'irlash
+  async fixAttendanceDisorders() {
+    this.logger.log("🔧 Davomat tartibsizliklarini to'g'irlash boshlandi...");
+
+    const fixedCount = {
+      deleted: 0,
+      updated: 0,
+      total: 0,
+    };
+
+    try {
+      // Barcha o'chirilmagan davomat yozuvlarini olish
+      const allAttendances = await this.attendanceModel
+        .find({ isDeleted: false })
+        .sort({ employeeId: 1, timestamp: 1 })
+        .lean();
+
+      // Xodim va kun bo'yicha guruhlash
+      const groupedByEmployeeAndDate: Map<
+        string,
+        Map<string, any[]>
+      > = new Map();
+
+      for (const attendance of allAttendances) {
+        const employeeId = (
+          attendance.employeeId as unknown as Types.ObjectId
+        ).toString();
+        const date = new Date(attendance.timestamp).toISOString().split('T')[0];
+
+        if (!groupedByEmployeeAndDate.has(employeeId)) {
+          groupedByEmployeeAndDate.set(employeeId, new Map());
+        }
+
+        const employeeDates = groupedByEmployeeAndDate.get(employeeId)!;
+        if (!employeeDates.has(date)) {
+          employeeDates.set(date, []);
+        }
+
+        employeeDates.get(date)!.push(attendance);
+      }
+
+      // Har bir xodim va kun uchun tartibsizliklarni to'g'irlash
+      for (const [employeeId, datesMap] of groupedByEmployeeAndDate) {
+        for (const [date, attendances] of datesMap) {
+          // Vaqt bo'yicha tartiblash
+          attendances.sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          );
+
+          // Tartibsizliklarni topish va to'g'irlash
+          const toDelete: string[] = [];
+          const toUpdate: Array<{ id: string; type: SchemaAttendanceType }> =
+            [];
+
+          for (let i = 0; i < attendances.length; i++) {
+            const current = attendances[i];
+            const currentType = current.type;
+            const currentId = (current._id as Types.ObjectId).toString();
+
+            // Birinchi yozuv OUT bo'lsa, uni o'chirish
+            if (i === 0 && currentType === SchemaAttendanceType.OUT) {
+              toDelete.push(currentId);
+              continue;
+            }
+
+            // Ikkinchidan boshlab, oldingisi bilan solishtirish
+            if (i > 0) {
+              const previous = attendances[i - 1];
+              const previousType = previous.type;
+
+              // Ikki IN ketma-ket - ikkinchisini OUT'ga o'zgartirish
+              if (
+                previousType === SchemaAttendanceType.IN &&
+                currentType === SchemaAttendanceType.IN
+              ) {
+                toUpdate.push({
+                  id: currentId,
+                  type: SchemaAttendanceType.OUT,
+                });
+                continue;
+              }
+
+              // Ikki OUT ketma-ket - birinchisini o'chirish
+              if (
+                previousType === SchemaAttendanceType.OUT &&
+                currentType === SchemaAttendanceType.OUT
+              ) {
+                // Oldingi yozuv allaqachon o'chirilgan yoki yangilanmagan bo'lmasligi kerak
+                const prevId = (previous._id as Types.ObjectId).toString();
+                if (
+                  !toDelete.includes(prevId) &&
+                  !toUpdate.some((u) => u.id === prevId)
+                ) {
+                  toDelete.push(prevId);
+                }
+              }
+            }
+          }
+
+          // Yangilanishlar - IN IN bo'lsa ikkinchisini OUT'ga o'zgartirish
+          for (const update of toUpdate) {
+            const attendance = await this.attendanceModel.findByIdAndUpdate(
+              update.id,
+              {
+                type: update.type,
+                status: AttendanceStatus.NORMAL, // Status'ni yangilash
+              },
+              { new: true },
+            );
+            fixedCount.updated++;
+            fixedCount.total++;
+
+            if (attendance) {
+              const dateISO = new Date(attendance.timestamp)
+                .toISOString()
+                .split('T')[0];
+              this.gateway.emitAttendanceChanged({
+                employeeId,
+                dateISO,
+                event: 'update',
+              });
+            }
+          }
+
+          // O'chirishlar - faqat OUT OUT yoki boshida OUT bo'lsa
+          for (const id of toDelete) {
+            await this.attendanceModel.findByIdAndUpdate(
+              id,
+              {
+                isDeleted: true,
+                deletedAt: new Date(),
+              },
+              { new: true },
+            );
+            fixedCount.deleted++;
+            fixedCount.total++;
+
+            const deletedAttendance = attendances.find(
+              (a) => (a._id as Types.ObjectId).toString() === id,
+            );
+            if (deletedAttendance) {
+              const dateISO = new Date(deletedAttendance.timestamp)
+                .toISOString()
+                .split('T')[0];
+              this.gateway.emitAttendanceChanged({
+                employeeId,
+                dateISO,
+                event: 'delete',
+              });
+            }
+          }
+
+          // Gateway'ga yangilanish yuborish
+          if (toDelete.length > 0 || toUpdate.length > 0) {
+            this.gateway.emitScheduleChanged({ dateISO: date, scope: 'daily' });
+            this.gateway.emitDailyScheduleChanged({ dateISO: date });
+          }
+        }
+      }
+
+      this.logger.log(
+        `✅ Davomat tartibsizliklari to'g'irlandi: ${fixedCount.updated} ta yangilandi (IN->OUT), ${fixedCount.deleted} ta o'chirildi, jami ${fixedCount.total} ta`,
+      );
+
+      return {
+        success: true,
+        message: "Davomat tartibsizliklari to'g'irlandi",
+        stats: {
+          updated: fixedCount.updated,
+          deleted: fixedCount.deleted,
+          total: fixedCount.total,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        "❌ Davomat tartibsizliklarini to'g'irlashda xatolik:",
+        error,
+      );
+      throw error;
+    }
   }
 
   async getDashboardSummary(date?: string) {

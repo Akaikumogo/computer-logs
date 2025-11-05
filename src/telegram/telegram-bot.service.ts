@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as TelegramBot from 'node-telegram-bot-api';
@@ -19,12 +20,16 @@ export class TelegramBotService implements OnModuleInit {
     new Map();
   // Status message tracker for realtime updates
   private statusMessageByChatId: Map<number, number> = new Map();
+  // Fallback token ishlatilganligini kuzatish
+  private isUsingFallbackToken = false;
+  private isHandlingConflict = false;
 
   constructor(
     @InjectModel(Employee.name) private employeeModel: Model<Employee>,
     @InjectModel(BotConfig.name) private botConfigModel: Model<BotConfig>,
     @InjectModel(User.name) private userModel: Model<User>,
     private scheduleService: ScheduleService,
+    private configService: ConfigService,
   ) {}
 
   async onModuleInit() {
@@ -39,18 +44,54 @@ export class TelegramBotService implements OnModuleInit {
         isActive: true,
       });
 
-      if (!botConfig || !botConfig.botToken) {
+      let tokenToUse: string | null = null;
+
+      if (botConfig && botConfig.botToken) {
+        tokenToUse = botConfig.botToken;
+      } else {
+        // Fallback token - conflict bo'lganda ishlatish uchun
+        const fallbackToken =
+          this.configService.get<string>('TELEGRAM_BOT_TOKEN_FALLBACK') ||
+          '6579210604:AAFWdWUc_ny6WZgSGMc_UOZLdRo1dGFG-kc';
+
         this.logger.warn(
-          "⚠️  Telegram bot token topilmadi yoki o'chirilgan. Bot ishlamaydi.",
+          "⚠️  Database'dan bot token topilmadi. Fallback token ishlatilmoqda.",
         );
-        return;
+        tokenToUse = fallbackToken;
       }
 
-      this.botToken = botConfig.botToken;
-      this.bot = new TelegramBot(this.botToken, { polling: true });
+      // Token conflict bo'lganda fallback token ishlatish
+      try {
+        this.botToken = tokenToUse;
+        this.bot = new TelegramBot(this.botToken, { polling: true });
+        this.setupBotHandlers();
+        this.logger.log('✅ Telegram bot muvaffaqiyatli ishga tushdi');
+      } catch (error: any) {
+        // Agar conflict bo'lsa, fallback token ishlatish
+        if (
+          error.message?.includes('conflict') ||
+          error.message?.includes('Conflict') ||
+          error.code === 409
+        ) {
+          this.logger.warn(
+            '⚠️  Bot token conflict. Fallback token ishlatilmoqda...',
+          );
+          const fallbackToken =
+            this.configService.get<string>('TELEGRAM_BOT_TOKEN_FALLBACK') ||
+            '6579210604:AAFWdWUc_ny6WZgSGMc_UOZLdRo1dGFG-kc';
 
-      this.setupBotHandlers();
-      this.logger.log('✅ Telegram bot muvaffaqiyatli ishga tushdi');
+          if (this.bot) {
+            this.bot.stopPolling();
+          }
+
+          this.botToken = fallbackToken;
+          this.bot = new TelegramBot(this.botToken, { polling: true });
+          this.setupBotHandlers();
+          this.logger.log('✅ Telegram bot fallback token bilan ishga tushdi');
+        } else {
+          throw error;
+        }
+      }
     } catch (error) {
       this.logger.error('❌ Telegram bot ishga tushirishda xatolik:', error);
     }
@@ -58,6 +99,50 @@ export class TelegramBotService implements OnModuleInit {
 
   private setupBotHandlers() {
     if (!this.bot) return;
+
+    // Polling error handler - conflict bo'lganda fallback token'ga o'tish
+    this.bot.on('polling_error', async (error: any) => {
+      if (
+        (error.message?.includes('Conflict') ||
+          error.message?.includes('conflict') ||
+          error.code === 409 ||
+          error.message?.includes('terminated by other getUpdates')) &&
+        !this.isUsingFallbackToken &&
+        !this.isHandlingConflict
+      ) {
+        this.isHandlingConflict = true;
+        this.logger.warn(
+          '⚠️  Telegram bot conflict aniqlandi. Fallback token ishlatilmoqda...',
+        );
+        
+        try {
+          // Eski bot ni to'xtatish
+          if (this.bot) {
+            this.bot.stopPolling();
+            this.bot = null;
+          }
+
+          // Fallback token bilan yangi bot yaratish
+          const fallbackToken =
+            this.configService.get<string>('TELEGRAM_BOT_TOKEN_FALLBACK') ||
+            '6579210604:AAFWdWUc_ny6WZgSGMc_UOZLdRo1dGFG-kc';
+
+          this.botToken = fallbackToken;
+          this.isUsingFallbackToken = true;
+          this.bot = new TelegramBot(this.botToken, { polling: true });
+          this.setupBotHandlers();
+          this.logger.log('✅ Telegram bot fallback token bilan qayta ishga tushdi');
+        } catch (fallbackError: any) {
+          this.logger.error(
+            '❌ Fallback token bilan bot yaratishda xatolik:',
+            fallbackError,
+          );
+          this.isHandlingConflict = false;
+        }
+      } else if (!this.isHandlingConflict) {
+        this.logger.error('❌ Telegram polling error:', error);
+      }
+    });
 
     // /start command
     this.bot.onText(/\/start/, async (msg) => {
