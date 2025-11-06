@@ -1502,6 +1502,92 @@ export class ScheduleService {
     }
   }
 
+  // V2: time va type ni qo'llab-quvvatlaydi (checkinout2 uchun)
+  async fingerCheckInOutV2(fingerAttendanceDto: FingerAttendanceDto) {
+    const { fingerNumber, location, device, notes, time, type } =
+      fingerAttendanceDto as any;
+
+    // Location ni topish
+    const locationData = await this.locationService.getLocationByName(location);
+    if (!locationData) {
+      throw new NotFoundException('Location topilmadi');
+    }
+
+    // Barmoq raqami va location orqali xodimni topish
+    const employee = await this.employeeModel.findOne({
+      fingerNumber,
+      primaryLocationId: locationData.id,
+    });
+    if (!employee) {
+      throw new NotFoundException(
+        'Barmoq raqami topilmadi yoki bu location ga biriktirilmagan',
+      );
+    }
+
+    const timestamp = time ? new Date(time) : new Date();
+
+    // Agar type ko'rsatilgan bo'lsa, bevosita shu amalni bajaramiz
+    if (type) {
+      const typeString = String(type).toLowerCase();
+      if (typeString === 'in' || typeString === 'checkin') {
+        return this.fingerCheckIn({
+          employeeId: (employee._id as Types.ObjectId).toString(),
+          locationName: location,
+          device,
+          notes,
+          timestamp,
+        });
+      }
+      if (typeString === 'out' || typeString === 'checkout') {
+        return this.fingerCheckOut({
+          employeeId: (employee._id as Types.ObjectId).toString(),
+          locationName: location,
+          device,
+          notes,
+          timestamp,
+        });
+      }
+    }
+
+    // Aks holda avtomatik aniqlash (timestamp kuni bo'yicha)
+    const dayStart = new Date(timestamp);
+    dayStart.setHours(0, 0, 0, 0);
+    const nextDay = new Date(dayStart);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const lastTodayAttendance = await this.attendanceModel
+      .findOne({
+        employeeId: employee._id,
+        timestamp: {
+          $gte: dayStart,
+          $lt: nextDay,
+        },
+        isDeleted: false,
+      })
+      .sort({ timestamp: -1 });
+
+    if (
+      lastTodayAttendance &&
+      lastTodayAttendance.type === SchemaAttendanceType.IN
+    ) {
+      return this.fingerCheckOut({
+        employeeId: (employee._id as Types.ObjectId).toString(),
+        locationName: location,
+        device,
+        notes,
+        timestamp,
+      });
+    }
+
+    return this.fingerCheckIn({
+      employeeId: (employee._id as Types.ObjectId).toString(),
+      locationName: location,
+      device,
+      notes,
+      timestamp,
+    });
+  }
+
   // Fingerprint uchun maxsus checkIn metodi (bugungi kundagi tekshiruvsiz)
   private async fingerCheckIn(data: {
     employeeId: string;

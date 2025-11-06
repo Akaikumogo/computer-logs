@@ -263,7 +263,7 @@ export class ScheduleController {
   })
   @HttpCode(HttpStatus.CREATED)
   async fingerCheckInOut2(@Body() fingerAttendanceDto: FingerAttendanceDto) {
-    return this.scheduleService.fingerCheckInOut(fingerAttendanceDto);
+    return this.scheduleService.fingerCheckInOutV2(fingerAttendanceDto);
   }
 
   // ==================== ATTENDANCE MANAGEMENT ====================
